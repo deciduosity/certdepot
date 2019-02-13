@@ -38,12 +38,12 @@ type mongoCertDepot struct {
 }
 
 type MgoCertDepotOptions struct {
-	MongoDBURI           string
-	MongoDBDialTimeout   time.Duration
-	MongoDBSocketTimeout time.Duration
-	DatabaseName         string
-	CollectionName       string
-	ExpireAfter          time.Duration
+	MongoDBURI           string        `bson:"mongodb_uri" json:"mongodb_uri" yaml:"mongodb_uri"`
+	MongoDBDialTimeout   time.Duration `bson:"dial_timeout" json:"dial_timeout" yaml:"dial_timeout"`
+	MongoDBSocketTimeout time.Duration `bson:"socket_timeout" json:"socket_timeout" yaml:"socket_timeout"`
+	DatabaseName         string        `bson:"db_name" json:"db_name" yaml:"db_name"`
+	CollectionName       string        `bson:"coll_name" json:"coll_name" yaml:"coll_name"`
+	ExpireAfter          time.Duration `bson:"expire_after" json:"expire_after" yaml:"expire_after"`
 }
 
 // Create a new cert depot in the specified MongoDB.

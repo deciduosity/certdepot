@@ -16,53 +16,53 @@ type CertificateOptions struct {
 	// Options specific to Init and CertRequest.
 	//
 	// Passprhase to encrypt private-key PEM block.
-	Passphrase string
+	Passphrase string `bson:"passphrase" json:"passphrase" yaml:"passphrase"`
 	// Size (in bits) of RSA keypair to generate (defaults to 2048).
-	KeyBits int
+	KeyBits int `bson:"key_bits" json:"key_bits" yaml:"key_bits"`
 	// Sets the Organization (O) field of the certificate.
-	Organization string
+	Organization string `bson:"o" json:"o" yaml:"o"`
 	// Sets the Country (C) field of the certificate.
-	Country string
+	Country string `bson:"c" json:"c" yaml:"c"`
 	// Sets the Locality (L) field of the certificate.
-	Locality string
+	Locality string `bson:"l" json:"l" yaml:"l"`
 	// Sets the Common Name (CN) field of the certificate.
-	CommonName string
+	CommonName string `bson:"cn" json:"cn" yaml:"cn"`
 	// Sets the Organizational Unit (OU) field of the certificate.
-	OrganizationalUnit string
+	OrganizationalUnit string `bson:"ou" json:"ou" yaml:"ou"`
 	// Sets the State/Province (ST) field of the certificate.
-	Province string
+	Province string `bson:"st" json:"st" yaml:"st"`
 	// IP addresses to add as subject alt name.
-	IP []string
+	IP []string `bson:"ip" json:"ip" yaml:"ip"`
 	// DNS entries to add as subject alt name.
-	Domain []string
+	Domain []string `bson:"dns" json:"dns" yaml:"dns"`
 	// URI values to add as subject alt name.
-	URI []string
+	URI []string `bson:"uri" json:"uri" yaml:"uri"`
 	// Path to private key PEM file (if blank, will generate new keypair).
-	Key string
+	Key string `bson:"key" json:"key" yaml:"key"`
 
 	//
 	// Options specific to Init and Sign.
 	//
 	// How long until the certificate expires.
-	Expires time.Duration
+	Expires time.Duration `bson:"expires" json:"expires" yaml:"expires"`
 
 	//
 	// Options specific to Sign.
 	//
 	// Host name of the certificate to be signed.
-	Host string
+	Host string `bson:"host" json:"host" yaml:"host"`
 	// Name of CA to issue cert with.
-	CA string
+	CA string `bson:"ca" json:"ca" yaml:"ca"`
 	// Passphrase to decrypt CA's private-key PEM block.
-	CAPassphrase string
+	CAPassphrase string `bson:"ca_passphrase" json:"ca_passphrase" yaml:"ca_passphrase"`
 	// Whether generated certificate should be an intermediate.
-	Intermediate bool
+	Intermediate bool `bson:"intermediate" json:"intermediate" yaml:"intermediate"`
 }
 
 // Init initializes a new CA.
 func (opts *CertificateOptions) Init(d depot.Depot) error {
 	if opts.CommonName == "" {
-		return errors.New("must provide Command Name for CA!")
+		return errors.New("must provide Common Name for CA!")
 	}
 	formattedName := strings.Replace(opts.CommonName, " ", "_", -1)
 
@@ -247,7 +247,7 @@ func (opts *CertificateOptions) Sign(d depot.Depot) error {
 
 func (opts CertificateOptions) getCertificateRequestName() (string, error) {
 	switch {
-	case opts.CommonName == "":
+	case opts.CommonName != "":
 		return opts.CommonName, nil
 	case len(opts.Domain) != 0:
 		return opts.Domain[0], nil
