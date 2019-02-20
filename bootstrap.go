@@ -48,16 +48,16 @@ func BootstrapDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 
 	if conf.CACert != "" {
 		if err = addCert(d, conf); err != nil {
-			return nil, errors.WithStack(err)
+			return nil, errors.Wrap(err, "problem adding a ca cert")
 		}
 	}
 	if !depot.CheckCertificate(d, conf.CAName) {
 		if err = createCA(d, conf); err != nil {
-			return nil, errors.WithStack(err)
+			return nil, errors.Wrap(err, "problem during certificate creation")
 		}
 	} else if !depot.CheckCertificate(d, conf.ServiceName) {
 		if err = createServerCert(d, conf); err != nil {
-			return nil, errors.WithStack(err)
+			return nil, errors.Wrap(err, "problem checking the service certificate")
 		}
 	}
 
@@ -71,12 +71,12 @@ func createDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 	if conf.FileDepot != "" {
 		d, err = depot.NewFileDepot(conf.FileDepot)
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return nil, errors.Wrap(err, "problem initializing the file deopt")
 		}
 	} else if !conf.MgoDepot.IsZero() {
 		d, err = NewMgoCertDepot(conf.MgoDepot)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "problem initializing the mgo depot")
 		}
 	}
 
@@ -97,10 +97,10 @@ func addCert(d depot.Depot, conf BootstrapDepotConfig) error {
 
 func createCA(d depot.Depot, conf BootstrapDepotConfig) error {
 	if err := conf.CAOpts.Init(d); err != nil {
-		return err
+		return errors.Wrap(err, "problem initializing the ca")
 	}
 	if err := createServerCert(d, conf); err != nil {
-		return err
+		return errors.Wrap(err, "problem creating the server cert")
 	}
 
 	return nil
@@ -108,10 +108,10 @@ func createCA(d depot.Depot, conf BootstrapDepotConfig) error {
 
 func createServerCert(d depot.Depot, conf BootstrapDepotConfig) error {
 	if err := conf.ServiceOpts.CertRequest(d); err != nil {
-		return err
+		return errors.Wrap(err, "problem creating service sert request")
 	}
 	if err := conf.ServiceOpts.Sign(d); err != nil {
-		return err
+		return errors.Wrap(err, "problem signing service key")
 	}
 
 	return nil
