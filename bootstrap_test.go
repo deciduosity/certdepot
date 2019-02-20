@@ -30,7 +30,10 @@ func TestBootstrapDepotConfigValidate(t *testing.T) {
 		{
 			name: "ValidMgoDepot",
 			conf: BootstrapDepotConfig{
-				MgoDepot:    &MgoCertDepotOptions{},
+				MgoDepot: MgoCertDepotOptions{
+					DatabaseName:   "one",
+					CollectionName: "two",
+				},
 				CAName:      "root",
 				ServiceName: "localhost",
 				CACert:      "ca cert",
@@ -50,8 +53,11 @@ func TestBootstrapDepotConfigValidate(t *testing.T) {
 		{
 			name: "MoreThanOneDepotSet",
 			conf: BootstrapDepotConfig{
-				FileDepot:   "depot",
-				MgoDepot:    &MgoCertDepotOptions{},
+				FileDepot: "depot",
+				MgoDepot: MgoCertDepotOptions{
+					DatabaseName:   "one",
+					CollectionName: "two",
+				},
 				CAName:      "root",
 				ServiceName: "localhost",
 				CACert:      "ca cert",
@@ -165,12 +171,12 @@ func TestBootstrapDepot(t *testing.T) {
 		{
 			name: "MgoDepot",
 			setup: func(conf *BootstrapDepotConfig) depot.Depot {
-				conf.MgoDepot = &MgoCertDepotOptions{
+				conf.MgoDepot = MgoCertDepotOptions{
 					DatabaseName:   databaseName,
 					CollectionName: depotName,
 				}
 
-				d, err := NewMgoCertDepot(*conf.MgoDepot)
+				d, err := NewMgoCertDepot(conf.MgoDepot)
 				require.NoError(t, err)
 				return d
 			},
