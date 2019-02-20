@@ -39,11 +39,19 @@ type mongoCertDepot struct {
 
 type MgoCertDepotOptions struct {
 	MongoDBURI           string        `bson:"mongodb_uri" json:"mongodb_uri" yaml:"mongodb_uri"`
-	MongoDBDialTimeout   time.Duration `bson:"dial_timeout" json:"dial_timeout" yaml:"dial_timeout"`
-	MongoDBSocketTimeout time.Duration `bson:"socket_timeout" json:"socket_timeout" yaml:"socket_timeout"`
 	DatabaseName         string        `bson:"db_name" json:"db_name" yaml:"db_name"`
 	CollectionName       string        `bson:"coll_name" json:"coll_name" yaml:"coll_name"`
-	ExpireAfter          time.Duration `bson:"expire_after" json:"expire_after" yaml:"expire_after"`
+	MongoDBDialTimeout   time.Duration `bson:"dial_timeout,omitempty" json:"dial_timeout,omitempty" yaml:"dial_timeout,omitempty"`
+	MongoDBSocketTimeout time.Duration `bson:"socket_timeout,omitempty" json:"socket_timeout,omitempty" yaml:"socket_timeout,omitempty"`
+	ExpireAfter          time.Duration `bson:"expire_after,omitempty" json:"expire_after,omitempty" yaml:"expire_after,omitempty"`
+}
+
+func (opts *MgoCertDepotOptions) IsZero() bool {
+	if opts.DatabaseName == "" && opts.CollectionName == "" {
+		return true
+	}
+
+	return false
 }
 
 // Create a new cert depot in the specified MongoDB.

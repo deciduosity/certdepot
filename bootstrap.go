@@ -6,24 +6,30 @@ import (
 )
 
 type BootstrapDepotConfig struct {
-	FileDepot   string               `bson:"file_depot" json:"file_depot" yaml:"file_depot"`
-	MgoDepot    *MgoCertDepotOptions `bson:"mgo_depot" json:"mgo_depot" yaml:"mgo_depot"`
-	CACert      []byte               `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
-	CAKey       []byte               `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
-	CAName      string               `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
-	ServiceName string               `bson:"service_name" json:"service_name" yaml:"service_name"`
-	CAOpts      CertificateOptions   `bson:"ca_opts" json:"ca_opts" yaml:"ca_opts"`
-	ServiceOpts CertificateOptions   `bson:"service_opts" json:"service_opts" yaml:"service_opts"`
+	FileDepot   string              `bson:"file_depot,omitempty" json:"file_depot,omitempty" yaml:"file_depot,omitempty"`
+	MgoDepot    MgoCertDepotOptions `bson:"mgo_depot,omitempty" json:"mgo_depot,omitempty" yaml:"mgo_depot,omitempty"`
+	CACert      string              `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
+	CAKey       string              `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
+	CAName      string              `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
+	ServiceName string              `bson:"service_name" json:"service_name" yaml:"service_name"`
+	CAOpts      CertificateOptions  `bson:"ca_opts,omitempty" json:"ca_opts,omitempty" yaml:"ca_opts,omitempty"`
+	ServiceOpts CertificateOptions  `bson:"service_opts,omitempty" json:"service_opts,omitempty" yaml:"service_opts,omitempty"`
 }
 
 func (c *BootstrapDepotConfig) Validate() error {
-	if (c.FileDepot != "" && c.MgoDepot != nil) || (c.FileDepot == "" && c.MgoDepot == nil) {
-		return errors.New("cannot set contradictory depot types")
+	if c.FileDepot != "" && !c.MgoDepot.IsZero() {
+		return errors.New("cannot specify more than one depot configuration")
 	}
+
+	if c.FileDepot == "" && c.MgoDepot.IsZero() {
+		return errors.New("must specify one depot configuration")
+	}
+
 	if c.CAName == "" || c.ServiceName == "" {
 		return errors.New("must the name of the CA and service!")
 	}
-	if (c.CACert != nil && c.CAKey == nil) || (c.CACert == nil && c.CAKey != nil) {
+
+	if (c.CACert != "" && c.CAKey == "") || (c.CACert == "" && c.CAKey != "") {
 		return errors.New("must provide both cert and key file if want to bootstrap with existing CA")
 	}
 
@@ -40,7 +46,7 @@ func BootstrapDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 		return nil, errors.Wrap(err, "problem creating depot")
 	}
 
-	if conf.CACert != nil {
+	if conf.CACert != "" {
 		if err = addCert(d, conf); err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -67,8 +73,8 @@ func createDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-	} else if conf.MgoDepot != nil {
-		d, err = NewMgoCertDepot(*conf.MgoDepot)
+	} else if !conf.MgoDepot.IsZero() {
+		d, err = NewMgoCertDepot(conf.MgoDepot)
 		if err != nil {
 			return nil, err
 		}
@@ -78,11 +84,11 @@ func createDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 }
 
 func addCert(d depot.Depot, conf BootstrapDepotConfig) error {
-	if err := d.Put(depot.CrtTag(conf.CAName), conf.CACert); err != nil {
+	if err := d.Put(depot.CrtTag(conf.CAName), []byte(conf.CACert)); err != nil {
 		return errors.Wrap(err, "problem adding CA cert to depot")
 	}
 
-	if err := d.Put(depot.PrivKeyTag(conf.CAName), conf.CAKey); err != nil {
+	if err := d.Put(depot.PrivKeyTag(conf.CAName), []byte(conf.CAKey)); err != nil {
 		return errors.Wrap(err, "problem adding CA key to depot")
 	}
 
