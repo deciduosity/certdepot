@@ -168,9 +168,9 @@ func (m *mongoCertDepot) Check(tag *depot.Tag) bool {
 	}
 }
 
-// Get reads the data for the id specified by tag. Returns an error if
-// the user does not exist, if the TTL has expired (for certs), or if the data
-// is empty.
+// Get reads the data for the user specified by tag. Returns an error if the
+// user does not exist, if the TTL has expired (for certs), or if the data is
+// empty.
 func (m *mongoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	name, key := getNameAndKey(tag)
 	session := m.session.Clone()
@@ -197,7 +197,7 @@ func (m *mongoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	case userCertReqKey:
 		data = []byte(u.CertReq)
 	case userCertRevocListKey:
-		data = []byte(u.Cert)
+		data = []byte(u.CertRevocList)
 		if len(data) > 0 && time.Since(u.TTL) > m.expireAfter {
 			return nil, errors.Errorf("certificate revocation list for %s has expired!", name)
 		}
@@ -209,7 +209,7 @@ func (m *mongoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	return data, nil
 }
 
-// Delete removes the data specified by the tag from a user.
+// Delete removes the data from a user specified by the tag.
 func (m *mongoCertDepot) Delete(tag *depot.Tag) error {
 	name, key := getNameAndKey(tag)
 	session := m.session.Clone()
