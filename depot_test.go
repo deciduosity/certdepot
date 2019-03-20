@@ -61,7 +61,8 @@ func TestDepot(t *testing.T) {
 			setup: func() depot.Depot {
 				tempDir, err = ioutil.TempDir(".", "file_depot")
 				require.NoError(t, err)
-				d, err := depot.NewFileDepot(tempDir)
+				var d *depot.FileDepot
+				d, err = depot.NewFileDepot(tempDir)
 				require.NoError(t, err)
 				return d
 			},
@@ -74,7 +75,8 @@ func TestDepot(t *testing.T) {
 					return
 				}
 
-				fileData, err := ioutil.ReadFile(filepath.Join(tempDir, path))
+				var fileData []byte
+				fileData, err = ioutil.ReadFile(filepath.Join(tempDir, path))
 				require.NoError(t, err)
 				assert.Equal(t, data, fileData)
 			},
