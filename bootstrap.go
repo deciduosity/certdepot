@@ -6,14 +6,14 @@ import (
 )
 
 type BootstrapDepotConfig struct {
-	FileDepot   string              `bson:"file_depot,omitempty" json:"file_depot,omitempty" yaml:"file_depot,omitempty"`
-	MgoDepot    MgoCertDepotOptions `bson:"mgo_depot,omitempty" json:"mgo_depot,omitempty" yaml:"mgo_depot,omitempty"`
-	CACert      string              `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
-	CAKey       string              `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
-	CAName      string              `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
-	ServiceName string              `bson:"service_name" json:"service_name" yaml:"service_name"`
-	CAOpts      CertificateOptions  `bson:"ca_opts,omitempty" json:"ca_opts,omitempty" yaml:"ca_opts,omitempty"`
-	ServiceOpts CertificateOptions  `bson:"service_opts,omitempty" json:"service_opts,omitempty" yaml:"service_opts,omitempty"`
+	FileDepot   string             `bson:"file_depot,omitempty" json:"file_depot,omitempty" yaml:"file_depot,omitempty"`
+	MgoDepot    MongoDBOptions     `bson:"mgo_depot,omitempty" json:"mgo_depot,omitempty" yaml:"mgo_depot,omitempty"`
+	CACert      string             `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
+	CAKey       string             `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
+	CAName      string             `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
+	ServiceName string             `bson:"service_name" json:"service_name" yaml:"service_name"`
+	CAOpts      CertificateOptions `bson:"ca_opts,omitempty" json:"ca_opts,omitempty" yaml:"ca_opts,omitempty"`
+	ServiceOpts CertificateOptions `bson:"service_opts,omitempty" json:"service_opts,omitempty" yaml:"service_opts,omitempty"`
 }
 
 func (c *BootstrapDepotConfig) Validate() error {

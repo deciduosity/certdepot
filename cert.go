@@ -287,3 +287,19 @@ func formatName(name string) (string, error) {
 	}
 	return string(filenameAcceptable.ReplaceAll([]byte(name), []byte("_"))), nil
 }
+
+func getNameAndKey(tag *depot.Tag) (string, string) {
+	if name := depot.GetNameFromCrtTag(tag); name != "" {
+		return name, userCertKey
+	}
+	if name := depot.GetNameFromPrivKeyTag(tag); name != "" {
+		return name, userPrivateKeyKey
+	}
+	if name := depot.GetNameFromCsrTag(tag); name != "" {
+		return name, userCertReqKey
+	}
+	if name := depot.GetNameFromCrlTag(tag); name != "" {
+		return name, userCertRevocListKey
+	}
+	return "", ""
+}

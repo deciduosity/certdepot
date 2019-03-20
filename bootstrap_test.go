@@ -30,7 +30,7 @@ func TestBootstrapDepotConfigValidate(t *testing.T) {
 		{
 			name: "ValidMgoDepot",
 			conf: BootstrapDepotConfig{
-				MgoDepot: MgoCertDepotOptions{
+				MgoDepot: MongoDBOptions{
 					DatabaseName:   "one",
 					CollectionName: "two",
 				},
@@ -54,7 +54,7 @@ func TestBootstrapDepotConfigValidate(t *testing.T) {
 			name: "MoreThanOneDepotSet",
 			conf: BootstrapDepotConfig{
 				FileDepot: "depot",
-				MgoDepot: MgoCertDepotOptions{
+				MgoDepot: MongoDBOptions{
 					DatabaseName:   "one",
 					CollectionName: "two",
 				},
@@ -171,7 +171,7 @@ func TestBootstrapDepot(t *testing.T) {
 		{
 			name: "MgoDepot",
 			setup: func(conf *BootstrapDepotConfig) depot.Depot {
-				conf.MgoDepot = MgoCertDepotOptions{
+				conf.MgoDepot = MongoDBOptions{
 					DatabaseName:   databaseName,
 					CollectionName: depotName,
 				}
