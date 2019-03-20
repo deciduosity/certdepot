@@ -8,9 +8,9 @@ import (
 	"github.com/mongodb/grip/message"
 	"github.com/pkg/errors"
 	"github.com/square/certstrap/depot"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type mongoDepot struct {
@@ -74,7 +74,7 @@ func (m *mongoDepot) Put(tag *depot.Tag, data []byte) error {
 	}
 
 	res, err := m.client.Database(m.databaseName).Collection(m.collectionName).UpdateOne(m.ctx,
-		bson.D{{"_id", name}},
+		bson.D{{Key: "_id", Value: name}},
 		update,
 		options.Update().SetUpsert(true))
 	if err != nil {
@@ -97,7 +97,7 @@ func (m *mongoDepot) Check(tag *depot.Tag) bool {
 
 	u := &User{}
 
-	err := m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{"_id", name}}).Decode(u)
+	err := m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{Key: "_id", Value: name}}).Decode(u)
 	grip.WarningWhen(errNotNotFound(err), message.Fields{
 		"db":   m.databaseName,
 		"coll": m.collectionName,
@@ -127,7 +127,7 @@ func (m *mongoDepot) Get(tag *depot.Tag) ([]byte, error) {
 	name, key := getNameAndKey(tag)
 
 	u := &User{}
-	err := m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{"_id", name}}).Decode(u)
+	err := m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{Key: "_id", Value: name}}).Decode(u)
 	if err == mongo.ErrNoDocuments {
 		return nil, errors.Errorf("could not find %s in the database", name)
 	}
@@ -164,7 +164,7 @@ func (m *mongoDepot) Delete(tag *depot.Tag) error {
 	name, key := getNameAndKey(tag)
 
 	_, err := m.client.Database(m.databaseName).Collection(m.collectionName).UpdateOne(m.ctx,
-		bson.D{{"_id", name}},
+		bson.D{{Key: "_id", Value: name}},
 		bson.M{"$unset": bson.M{key: ""}})
 
 	if errNotNotFound(err) {
