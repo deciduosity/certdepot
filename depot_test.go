@@ -122,7 +122,6 @@ func TestDepot(t *testing.T) {
 					session:        session,
 					databaseName:   databaseName,
 					collectionName: collectionName,
-					expireAfter:    30 * 24 * time.Hour,
 				}
 			},
 			check: func(t *testing.T, tag *depot.Tag, data []byte) {
@@ -131,7 +130,6 @@ func TestDepot(t *testing.T) {
 				u := &User{}
 				require.NoError(t, session.DB(databaseName).C(collectionName).FindId(name).One(u))
 				assert.Equal(t, name, u.ID)
-				assert.True(t, u.TTL.After(time.Now().Add(-time.Minute)))
 
 				var value string
 				switch key {
@@ -163,7 +161,6 @@ func TestDepot(t *testing.T) {
 							PrivateKey:    "key",
 							CertReq:       "certReq",
 							CertRevocList: "certRevocList",
-							TTL:           time.Now(),
 						}
 						require.NoError(t, session.DB(databaseName).C(collectionName).Insert(user))
 						time.Sleep(time.Second)
@@ -177,8 +174,6 @@ func TestDepot(t *testing.T) {
 						assert.Equal(t, user.PrivateKey, u.PrivateKey)
 						assert.Equal(t, user.CertReq, u.CertReq)
 						assert.Equal(t, user.CertRevocList, u.CertRevocList)
-						assert.True(t, u.TTL.After(user.TTL))
-						newTTL := u.TTL
 
 						keyData := []byte("bob's new fake private key")
 						assert.NoError(t, d.Put(depot.PrivKeyTag(name), keyData))
@@ -189,7 +184,6 @@ func TestDepot(t *testing.T) {
 						assert.Equal(t, string(keyData), u.PrivateKey)
 						assert.Equal(t, user.CertReq, u.CertReq)
 						assert.Equal(t, user.CertRevocList, u.CertRevocList)
-						assert.Equal(t, newTTL, u.TTL)
 
 						certReqData := []byte("bob's new fake certificate request")
 						assert.NoError(t, d.Put(depot.CsrTag(name), certReqData))
@@ -200,7 +194,6 @@ func TestDepot(t *testing.T) {
 						assert.Equal(t, string(keyData), u.PrivateKey)
 						assert.Equal(t, string(certReqData), u.CertReq)
 						assert.Equal(t, user.CertRevocList, u.CertRevocList)
-						assert.Equal(t, newTTL, u.TTL)
 
 						certRevocListData := []byte("bob's new fake certificate revocation list")
 						assert.NoError(t, d.Put(depot.CrlTag(name), certRevocListData))
@@ -211,7 +204,6 @@ func TestDepot(t *testing.T) {
 						assert.Equal(t, string(keyData), u.PrivateKey)
 						assert.Equal(t, string(certReqData), u.CertReq)
 						assert.Equal(t, string(certRevocListData), u.CertRevocList)
-						assert.Equal(t, newTTL, u.TTL)
 					},
 				},
 				{
@@ -234,8 +226,7 @@ func TestDepot(t *testing.T) {
 					test: func(t *testing.T, d depot.Depot) {
 						const name = "bob"
 						u := &User{
-							ID:  name,
-							TTL: time.Now(),
+							ID: name,
 						}
 						require.NoError(t, session.DB(databaseName).C(collectionName).Insert(u))
 
@@ -250,37 +241,6 @@ func TestDepot(t *testing.T) {
 						data, err = d.Get(depot.CsrTag(name))
 						assert.Error(t, err)
 						assert.Nil(t, data)
-
-						data, err = d.Get(depot.CrlTag(name))
-						assert.Error(t, err)
-						assert.Nil(t, data)
-					},
-				},
-				{
-					name: "GetOnExpiredTTL",
-					test: func(t *testing.T, d depot.Depot) {
-						const name = "bob"
-						u := &User{
-							ID:            name,
-							Cert:          "cert",
-							PrivateKey:    "key",
-							CertReq:       "certReq",
-							CertRevocList: "certRevocList",
-							TTL:           time.Time{},
-						}
-						require.NoError(t, session.DB(databaseName).C(collectionName).Insert(u))
-
-						data, err := d.Get(depot.CrtTag(name))
-						assert.Error(t, err)
-						assert.Nil(t, data)
-
-						data, err = d.Get(depot.PrivKeyTag(name))
-						assert.NoError(t, err)
-						assert.Equal(t, u.PrivateKey, string(data))
-
-						data, err = d.Get(depot.CsrTag(name))
-						assert.NoError(t, err)
-						assert.Equal(t, u.CertReq, string(data))
 
 						data, err = d.Get(depot.CrlTag(name))
 						assert.Error(t, err)

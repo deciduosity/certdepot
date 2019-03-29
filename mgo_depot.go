@@ -1,8 +1,6 @@
 package certdepot
 
 import (
-	"time"
-
 	"github.com/mongodb/grip"
 	"github.com/mongodb/grip/message"
 	"github.com/pkg/errors"
@@ -15,7 +13,6 @@ type mgoCertDepot struct {
 	session        *mgo.Session
 	databaseName   string
 	collectionName string
-	expireAfter    time.Duration
 }
 
 // NewMgoCertDepot creates a new cert depot using the legacy mgo
@@ -45,7 +42,6 @@ func NewMgoCertDepotWithSession(s *mgo.Session, opts MongoDBOptions) (depot.Depo
 		session:        s,
 		databaseName:   opts.DatabaseName,
 		collectionName: opts.CollectionName,
-		expireAfter:    opts.ExpireAfter,
 	}, nil
 }
 
@@ -60,9 +56,6 @@ func (m *mgoCertDepot) Put(tag *depot.Tag, data []byte) error {
 	defer session.Close()
 
 	update := bson.M{"$set": bson.M{key: string(data)}}
-	if key == userCertKey {
-		update["$set"].(bson.M)[userTTLKey] = time.Now()
-	}
 	changeInfo, err := session.DB(m.databaseName).C(m.collectionName).UpsertId(name, update)
 	if err != nil {
 		return errors.Wrap(err, "problem adding data to the database")
@@ -109,8 +102,7 @@ func (m *mgoCertDepot) Check(tag *depot.Tag) bool {
 }
 
 // Get reads the data for the user specified by tag. Returns an error if the
-// user does not exist, if the TTL has expired (for certs), or if the data is
-// empty.
+// user does not exist or if the data is empty.
 func (m *mgoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	name, key := getNameAndKey(tag)
 	session := m.session.Clone()
@@ -129,18 +121,12 @@ func (m *mgoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	switch key {
 	case userCertKey:
 		data = []byte(u.Cert)
-		if len(data) > 0 && time.Since(u.TTL) > m.expireAfter {
-			return nil, errors.Errorf("certificate for %s has expired!", name)
-		}
 	case userPrivateKeyKey:
 		data = []byte(u.PrivateKey)
 	case userCertReqKey:
 		data = []byte(u.CertReq)
 	case userCertRevocListKey:
 		data = []byte(u.CertRevocList)
-		if len(data) > 0 && time.Since(u.TTL) > m.expireAfter {
-			return nil, errors.Errorf("certificate revocation list for %s has expired!", name)
-		}
 	}
 
 	if len(data) == 0 {
