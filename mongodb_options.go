@@ -22,6 +22,8 @@ var (
 	userCertRevocListKey = bsonutil.MustHaveTag(User{}, "CertRevocList")
 )
 
+// Options for NewMongoDBCertDepot, NewMongoDBCertDepotWithClient,
+// NewMgoCertDepot, and NewMgoCertDepotWithSession.
 type MongoDBOptions struct {
 	MongoDBURI           string        `bson:"mongodb_uri" json:"mongodb_uri" yaml:"mongodb_uri"`
 	DatabaseName         string        `bson:"db_name" json:"db_name" yaml:"db_name"`
@@ -30,6 +32,8 @@ type MongoDBOptions struct {
 	MongoDBSocketTimeout time.Duration `bson:"socket_timeout,omitempty" json:"socket_timeout,omitempty" yaml:"socket_timeout,omitempty"`
 }
 
+// IsZero returns whether the given MongoDBOptions struct holds the "zero"
+// value of the struct.
 func (opts *MongoDBOptions) IsZero() bool {
 	if opts.DatabaseName == "" && opts.CollectionName == "" {
 		return true

@@ -1,6 +1,7 @@
 package certdepot
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"github.com/square/certstrap/depot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	mgo "gopkg.in/mgo.v2"
 )
 
@@ -31,6 +35,7 @@ func getTagPath(tag *depot.Tag) string {
 
 func TestDepot(t *testing.T) {
 	var tempDir string
+	var data []byte
 
 	session, err := mgo.DialWithTimeout("mongodb://localhost:27017", 2*time.Second)
 	require.NoError(t, err)
@@ -43,6 +48,12 @@ func TestDepot(t *testing.T) {
 			assert.Equal(t, "ns not found", err.Error())
 		}
 	}()
+
+	ctx := context.TODO()
+	connctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(connctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	require.NoError(t, err)
 
 	type testCase struct {
 		name string
@@ -230,7 +241,155 @@ func TestDepot(t *testing.T) {
 						}
 						require.NoError(t, session.DB(databaseName).C(collectionName).Insert(u))
 
-						data, err := d.Get(depot.CrtTag(name))
+						data, err = d.Get(depot.CrtTag(name))
+						assert.Error(t, err)
+						assert.Nil(t, data)
+
+						data, err = d.Get(depot.PrivKeyTag(name))
+						assert.Error(t, err)
+						assert.Nil(t, data)
+
+						data, err = d.Get(depot.CsrTag(name))
+						assert.Error(t, err)
+						assert.Nil(t, data)
+
+						data, err = d.Get(depot.CrlTag(name))
+						assert.Error(t, err)
+						assert.Nil(t, data)
+					},
+				},
+				{
+					name: "DeleteWhenDNE",
+					test: func(t *testing.T, d depot.Depot) {
+						const name = "bob"
+
+						assert.NoError(t, d.Delete(depot.CrtTag(name)))
+						assert.NoError(t, d.Delete(depot.PrivKeyTag(name)))
+						assert.NoError(t, d.Delete(depot.CsrTag(name)))
+						assert.NoError(t, d.Delete(depot.CrlTag(name)))
+					},
+				},
+			},
+		},
+		{
+			name: "MongoDB",
+			setup: func() depot.Depot {
+				return &mongoDepot{
+					ctx:            ctx,
+					client:         client,
+					databaseName:   databaseName,
+					collectionName: collectionName,
+				}
+			},
+			check: func(t *testing.T, tag *depot.Tag, data []byte) {
+				name, key := getNameAndKey(tag)
+
+				u := &User{}
+				coll := client.Database(databaseName).Collection(collectionName)
+				require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(u))
+				assert.Equal(t, name, u.ID)
+
+				var value string
+				switch key {
+				case userCertKey:
+					value = u.Cert
+				case userPrivateKeyKey:
+					value = u.PrivateKey
+				case userCertReqKey:
+					value = u.CertReq
+				case userCertRevocListKey:
+					value = u.CertRevocList
+				}
+				assert.Equal(t, string(data), value)
+			},
+			cleanup: func() {
+				require.NoError(t, client.Database(databaseName).Collection(collectionName).Drop(ctx))
+			},
+			tests: []testCase{
+				{
+					name: "PutUpdates",
+					test: func(t *testing.T, d depot.Depot) {
+						coll := client.Database(databaseName).Collection(collectionName)
+						const name = "bob"
+						user := &User{
+							ID:            name,
+							Cert:          "cert",
+							PrivateKey:    "key",
+							CertReq:       "certReq",
+							CertRevocList: "certRevocList",
+						}
+						_, err = coll.InsertOne(ctx, user)
+						require.NoError(t, err)
+						time.Sleep(time.Second)
+
+						certData := []byte("bob's new fake certificate")
+						assert.NoError(t, d.Put(depot.CrtTag(name), certData))
+						u := &User{}
+						require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(u))
+						assert.Equal(t, name, u.ID)
+						assert.Equal(t, string(certData), u.Cert)
+						assert.Equal(t, user.PrivateKey, u.PrivateKey)
+						assert.Equal(t, user.CertReq, u.CertReq)
+						assert.Equal(t, user.CertRevocList, u.CertRevocList)
+
+						keyData := []byte("bob's new fake private key")
+						assert.NoError(t, d.Put(depot.PrivKeyTag(name), keyData))
+						u = &User{}
+						require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(u))
+						assert.Equal(t, name, u.ID)
+						assert.Equal(t, string(certData), u.Cert)
+						assert.Equal(t, string(keyData), u.PrivateKey)
+						assert.Equal(t, user.CertReq, u.CertReq)
+						assert.Equal(t, user.CertRevocList, u.CertRevocList)
+
+						certReqData := []byte("bob's new fake certificate request")
+						assert.NoError(t, d.Put(depot.CsrTag(name), certReqData))
+						u = &User{}
+						require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(u))
+						assert.Equal(t, name, u.ID)
+						assert.Equal(t, string(certData), u.Cert)
+						assert.Equal(t, string(keyData), u.PrivateKey)
+						assert.Equal(t, string(certReqData), u.CertReq)
+						assert.Equal(t, user.CertRevocList, u.CertRevocList)
+
+						certRevocListData := []byte("bob's new fake certificate revocation list")
+						assert.NoError(t, d.Put(depot.CrlTag(name), certRevocListData))
+						u = &User{}
+						require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(u))
+						assert.Equal(t, name, u.ID)
+						assert.Equal(t, string(certData), u.Cert)
+						assert.Equal(t, string(keyData), u.PrivateKey)
+						assert.Equal(t, string(certReqData), u.CertReq)
+						assert.Equal(t, string(certRevocListData), u.CertRevocList)
+					},
+				},
+				{
+					name: "CheckReturnsFalseOnExistingUserWithNoData",
+					test: func(t *testing.T, d depot.Depot) {
+						const name = "alice"
+						u := &User{
+							ID: name,
+						}
+						_, err = client.Database(databaseName).Collection(collectionName).InsertOne(ctx, u)
+						require.NoError(t, err)
+
+						assert.False(t, d.Check(depot.CrtTag(name)))
+						assert.False(t, d.Check(depot.PrivKeyTag(name)))
+						assert.False(t, d.Check(depot.CsrTag(name)))
+						assert.False(t, d.Check(depot.CrlTag(name)))
+					},
+				},
+				{
+					name: "GetFailsOnExistingUserWithNoData",
+					test: func(t *testing.T, d depot.Depot) {
+						const name = "bob"
+						u := &User{
+							ID: name,
+						}
+						_, err = client.Database(databaseName).Collection(collectionName).InsertOne(ctx, u)
+						require.NoError(t, err)
+
+						data, err = d.Get(depot.CrtTag(name))
 						assert.Error(t, err)
 						assert.Nil(t, data)
 

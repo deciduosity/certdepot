@@ -1,27 +1,49 @@
 package certdepot
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 	"github.com/square/certstrap/depot"
 )
 
+// Options for BootstrapDepot. Must provide either the name of the FileDepot or
+// the MongoDepot options, not both or neither.
 type BootstrapDepotConfig struct {
-	FileDepot   string             `bson:"file_depot,omitempty" json:"file_depot,omitempty" yaml:"file_depot,omitempty"`
-	MgoDepot    MongoDBOptions     `bson:"mgo_depot,omitempty" json:"mgo_depot,omitempty" yaml:"mgo_depot,omitempty"`
-	CACert      string             `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
-	CAKey       string             `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
-	CAName      string             `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
-	ServiceName string             `bson:"service_name" json:"service_name" yaml:"service_name"`
-	CAOpts      CertificateOptions `bson:"ca_opts,omitempty" json:"ca_opts,omitempty" yaml:"ca_opts,omitempty"`
-	ServiceOpts CertificateOptions `bson:"service_opts,omitempty" json:"service_opts,omitempty" yaml:"service_opts,omitempty"`
+	// Name of FileDepot (directory). If a MongoDepot is desired, leave
+	// empty.
+	FileDepot string `bson:"file_depot,omitempty" json:"file_depot,omitempty" yaml:"file_depot,omitempty"`
+	// Options for setting up a MongoDepot. If a FileDepot is desired,
+	// leave pointer nil or the struct empty.
+	MongoDepot *MongoDBOptions `bson:"mongo_depot,omitempty" json:"mongo_depot,omitempty" yaml:"mongo_depot,omitempty"`
+	// CA certificate, this is optional unless CAKey is not empty, in
+	// which case a CA certificate must also be provided.
+	CACert string `bson:"ca_cert" json:"ca_cert" yaml:"ca_cert"`
+	// CA key, this is optional unless CACert is not empty, in which case
+	// a CA key must also be provided.
+	CAKey string `bson:"ca_key" json:"ca_key" yaml:"ca_key"`
+	// Common name of the CA (required).
+	CAName string `bson:"ca_name" json:"ca_name" yaml:"ca_name"`
+	// Common name of the service (required).
+	ServiceName string `bson:"service_name" json:"service_name" yaml:"service_name"`
+	// Options to initialize a CA. This is optional and only used if there
+	// is no existing `CAName` in the depot and `CACert` is empty.
+	// `CAOpts.CommonName` must equal `CAName`.
+	CAOpts *CertificateOptions `bson:"ca_opts,omitempty" json:"ca_opts,omitempty" yaml:"ca_opts,omitempty"`
+	// Options to create a service certificate. This is optional and only
+	// used if there is no existing `ServiceName` in the depot.
+	// `ServiceOpts.CommonName` must equal `ServiceName`.
+	// `ServiceOpts.CA` must equal `CAName`.
+	ServiceOpts *CertificateOptions `bson:"service_opts,omitempty" json:"service_opts,omitempty" yaml:"service_opts,omitempty"`
 }
 
+// Validate ensures that the BootstrapDepotConfig is configured correctly.
 func (c *BootstrapDepotConfig) Validate() error {
-	if c.FileDepot != "" && !c.MgoDepot.IsZero() {
+	if c.FileDepot != "" && c.MongoDepot != nil && !c.MongoDepot.IsZero() {
 		return errors.New("cannot specify more than one depot configuration")
 	}
 
-	if c.FileDepot == "" && c.MgoDepot.IsZero() {
+	if c.FileDepot == "" && (c.MongoDepot == nil || c.MongoDepot.IsZero()) {
 		return errors.New("must specify one depot configuration")
 	}
 
@@ -33,15 +55,28 @@ func (c *BootstrapDepotConfig) Validate() error {
 		return errors.New("must provide both cert and key file if want to bootstrap with existing CA")
 	}
 
+	if c.CAOpts != nil && c.CAOpts.CommonName != c.CAName {
+		return errors.New("CAName and CAOpts.CommonName must be the same!")
+	}
+
+	if c.ServiceOpts != nil && c.ServiceOpts.CommonName != c.ServiceName {
+		return errors.New("ServiceName and ServiceOpts.CommonName must be the same!")
+	}
+
+	if c.ServiceOpts != nil && c.ServiceOpts.CA != c.CAName {
+		return errors.New("CAName and ServiceOpts.CA must be the same!")
+	}
+
 	return nil
 }
 
-func BootstrapDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
+// BootstrapDepot creates a certificate depot with a CA and service certificate.
+func BootstrapDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, error) {
 	if err := conf.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid configuration")
 	}
 
-	d, err := createDepot(conf)
+	d, err := createDepot(ctx, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "problem creating depot")
 	}
@@ -64,7 +99,7 @@ func BootstrapDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 	return d, nil
 }
 
-func createDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
+func createDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, error) {
 	var d depot.Depot
 	var err error
 
@@ -73,8 +108,8 @@ func createDepot(conf BootstrapDepotConfig) (depot.Depot, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "problem initializing the file deopt")
 		}
-	} else if !conf.MgoDepot.IsZero() {
-		d, err = NewMgoCertDepot(conf.MgoDepot)
+	} else if !conf.MongoDepot.IsZero() {
+		d, err = NewMongoDBCertDepot(ctx, conf.MongoDepot)
 		if err != nil {
 			return nil, errors.Wrap(err, "problem initializing the mgo depot")
 		}
@@ -108,7 +143,7 @@ func createCA(d depot.Depot, conf BootstrapDepotConfig) error {
 
 func createServerCert(d depot.Depot, conf BootstrapDepotConfig) error {
 	if err := conf.ServiceOpts.CertRequest(d); err != nil {
-		return errors.Wrap(err, "problem creating service sert request")
+		return errors.Wrap(err, "problem creating service cert request")
 	}
 	if err := conf.ServiceOpts.Sign(d); err != nil {
 		return errors.Wrap(err, "problem signing service key")

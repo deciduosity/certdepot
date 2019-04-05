@@ -11,52 +11,53 @@ import (
 	"github.com/square/certstrap/pkix"
 )
 
+// Options to use for Init, CertRequest, and Sign.
 type CertificateOptions struct {
 	//
 	// Options specific to Init and CertRequest.
 	//
 	// Passprhase to encrypt private-key PEM block.
-	Passphrase string `bson:"passphrase" json:"passphrase" yaml:"passphrase"`
+	Passphrase string `bson:"passphrase,omitempty" json:"passphrase,omitempty" yaml:"passphrase,omitempty"`
 	// Size (in bits) of RSA keypair to generate (defaults to 2048).
-	KeyBits int `bson:"key_bits" json:"key_bits" yaml:"key_bits"`
+	KeyBits int `bson:"key_bits,omitempty" json:"key_bits,omitempty" yaml:"key_bits,omitempty"`
 	// Sets the Organization (O) field of the certificate.
-	Organization string `bson:"o" json:"o" yaml:"o"`
+	Organization string `bson:"o,omitempty" json:"o,omitempty" yaml:"o,omitempty"`
 	// Sets the Country (C) field of the certificate.
-	Country string `bson:"c" json:"c" yaml:"c"`
+	Country string `bson:"c,omitempty" json:"c,omitempty" yaml:"c,omitempty"`
 	// Sets the Locality (L) field of the certificate.
-	Locality string `bson:"l" json:"l" yaml:"l"`
+	Locality string `bson:"l,omitempty" json:"l,omitempty" yaml:"l,omitempty"`
 	// Sets the Common Name (CN) field of the certificate.
-	CommonName string `bson:"cn" json:"cn" yaml:"cn"`
+	CommonName string `bson:"cn,omitempty" json:"cn,omitempty" yaml:"cn,omitempty"`
 	// Sets the Organizational Unit (OU) field of the certificate.
-	OrganizationalUnit string `bson:"ou" json:"ou" yaml:"ou"`
+	OrganizationalUnit string `bson:"ou,omitempty" json:"ou,omitempty" yaml:"ou,omitempty"`
 	// Sets the State/Province (ST) field of the certificate.
-	Province string `bson:"st" json:"st" yaml:"st"`
+	Province string `bson:"st,omitempty" json:"st,omitempty" yaml:"st,omitempty"`
 	// IP addresses to add as subject alt name.
-	IP []string `bson:"ip" json:"ip" yaml:"ip"`
+	IP []string `bson:"ip,omitempty" json:"ip,omitempty" yaml:"ip,omitempty"`
 	// DNS entries to add as subject alt name.
-	Domain []string `bson:"dns" json:"dns" yaml:"dns"`
+	Domain []string `bson:"dns,omitempty" json:"dns,omitempty" yaml:"dns,omitempty"`
 	// URI values to add as subject alt name.
-	URI []string `bson:"uri" json:"uri" yaml:"uri"`
+	URI []string `bson:"uri,omitempty" json:"uri,omitempty" yaml:"uri,omitempty"`
 	// Path to private key PEM file (if blank, will generate new keypair).
-	Key string `bson:"key" json:"key" yaml:"key"`
+	Key string `bson:"key,omitempty" json:"key,omitempty" yaml:"key,omitempty"`
 
 	//
 	// Options specific to Init and Sign.
 	//
 	// How long until the certificate expires.
-	Expires time.Duration `bson:"expires" json:"expires" yaml:"expires"`
+	Expires time.Duration `bson:"expires,omitempty" json:"expires,omitempty" yaml:"expires,omitempty"`
 
 	//
 	// Options specific to Sign.
 	//
 	// Host name of the certificate to be signed.
-	Host string `bson:"host" json:"host" yaml:"host"`
+	Host string `bson:"host,omitempty" json:"host,omitempty" yaml:"host,omitempty"`
 	// Name of CA to issue cert with.
-	CA string `bson:"ca" json:"ca" yaml:"ca"`
+	CA string `bson:"ca,omitempty" json:"ca,omitempty" yaml:"ca,omitempty"`
 	// Passphrase to decrypt CA's private-key PEM block.
-	CAPassphrase string `bson:"ca_passphrase" json:"ca_passphrase" yaml:"ca_passphrase"`
+	CAPassphrase string `bson:"ca_passphrase,omitempty" json:"ca_passphrase,omitempty" yaml:"ca_passphrase,omitempty"`
 	// Whether generated certificate should be an intermediate.
-	Intermediate bool `bson:"intermediate" json:"intermediate" yaml:"intermediate"`
+	Intermediate bool `bson:"intermediate,omitempty" json:"intermediate,omitempty" yaml:"intermediate,omitempty"`
 }
 
 // Init initializes a new CA.
