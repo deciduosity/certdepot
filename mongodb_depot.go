@@ -26,9 +26,7 @@ func NewMongoDBCertDepot(ctx context.Context, opts *MongoDBOptions) (depot.Depot
 		return nil, errors.Wrap(err, "invalid options")
 	}
 
-	connctx, cancel := context.WithTimeout(ctx, opts.MongoDBDialTimeout)
-	defer cancel()
-	client, err := mongo.Connect(connctx, options.Client().ApplyURI(opts.MongoDBURI))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(opts.MongoDBURI).SetConnectTimeout(opts.MongoDBDialTimeout))
 	if err != nil {
 		return nil, errors.Wrap(err, "problem connecting to database")
 	}
