@@ -214,9 +214,10 @@ func TestBootstrapDepot(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, impl := range []struct {
-		name     string
-		setup    func(*BootstrapDepotConfig) depot.Depot
-		tearDown func()
+		name          string
+		setup         func(*BootstrapDepotConfig) depot.Depot
+		bootstrapFunc func(BootstrapDepotConfig) (depot.Depot, error)
+		tearDown      func()
 	}{
 		{
 			name: "FileDepot",
@@ -226,6 +227,9 @@ func TestBootstrapDepot(t *testing.T) {
 				d, err := depot.NewFileDepot(depotName)
 				require.NoError(t, err)
 				return d
+			},
+			bootstrapFunc: func(conf BootstrapDepotConfig) (depot.Depot, error) {
+				return BootstrapDepot(ctx, conf)
 			},
 			tearDown: func() {
 				require.NoError(t, os.RemoveAll(depotName))
@@ -242,6 +246,28 @@ func TestBootstrapDepot(t *testing.T) {
 				d, err := NewMongoDBCertDepot(ctx, conf.MongoDepot)
 				require.NoError(t, err)
 				return d
+			},
+			bootstrapFunc: func(conf BootstrapDepotConfig) (depot.Depot, error) {
+				return BootstrapDepot(ctx, conf)
+			},
+			tearDown: func() {
+				require.NoError(t, client.Database(databaseName).Collection(depotName).Drop(ctx))
+			},
+		},
+		{
+			name: "MongoDepotExistingClient",
+			setup: func(conf *BootstrapDepotConfig) depot.Depot {
+				conf.MongoDepot = &MongoDBOptions{
+					DatabaseName:   databaseName,
+					CollectionName: depotName,
+				}
+
+				d, err := NewMongoDBCertDepot(ctx, conf.MongoDepot)
+				require.NoError(t, err)
+				return d
+			},
+			bootstrapFunc: func(conf BootstrapDepotConfig) (depot.Depot, error) {
+				return BootstrapDepotWithMongoClient(ctx, client, conf)
 			},
 			tearDown: func() {
 				require.NoError(t, client.Database(databaseName).Collection(depotName).Drop(ctx))
@@ -325,21 +351,21 @@ func TestBootstrapDepot(t *testing.T) {
 			} {
 				t.Run(test.name, func(t *testing.T) {
 					implDepot := impl.setup(&test.conf)
-					defer impl.tearDown()
 					if test.setup != nil {
 						test.setup(implDepot)
 					}
-					bootstrapDepot, err := BootstrapDepot(ctx, test.conf)
+					bd, err := impl.bootstrapFunc(test.conf)
 					require.NoError(t, err)
 
-					assert.True(t, bootstrapDepot.Check(depot.CrtTag(caName)))
-					assert.True(t, bootstrapDepot.Check(depot.PrivKeyTag(caName)))
-					assert.True(t, bootstrapDepot.Check(depot.CrtTag(serviceName)))
-					assert.True(t, bootstrapDepot.Check(depot.PrivKeyTag(serviceName)))
+					assert.True(t, bd.Check(depot.CrtTag(caName)))
+					assert.True(t, bd.Check(depot.PrivKeyTag(caName)))
+					assert.True(t, bd.Check(depot.CrtTag(serviceName)))
+					assert.True(t, bd.Check(depot.PrivKeyTag(serviceName)))
 
 					if test.test != nil {
-						test.test(bootstrapDepot)
+						test.test(bd)
 					}
+					impl.tearDown()
 				})
 			}
 		})

@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/square/certstrap/depot"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // Options for BootstrapDepot. Must provide either the name of the FileDepot or
@@ -72,11 +73,17 @@ func (c *BootstrapDepotConfig) Validate() error {
 
 // BootstrapDepot creates a certificate depot with a CA and service certificate.
 func BootstrapDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, error) {
+	return BootstrapDepotWithMongoClient(ctx, nil, conf)
+}
+
+// BootstrapDepot creates a certificate depot with a CA and service certificate
+// using the provided mongo driver client.
+func BootstrapDepotWithMongoClient(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
 	if err := conf.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid configuration")
 	}
 
-	d, err := createDepot(ctx, conf)
+	d, err := createDepot(ctx, client, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "problem creating depot")
 	}
@@ -97,9 +104,10 @@ func BootstrapDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot
 	}
 
 	return d, nil
+
 }
 
-func createDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, error) {
+func createDepot(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
 	var d depot.Depot
 	var err error
 
@@ -109,9 +117,13 @@ func createDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, e
 			return nil, errors.Wrap(err, "problem initializing the file deopt")
 		}
 	} else if !conf.MongoDepot.IsZero() {
-		d, err = NewMongoDBCertDepot(ctx, conf.MongoDepot)
+		if client != nil {
+			d, err = NewMongoDBCertDepotWithClient(ctx, client, conf.MongoDepot)
+		} else {
+			d, err = NewMongoDBCertDepot(ctx, conf.MongoDepot)
+		}
 		if err != nil {
-			return nil, errors.Wrap(err, "problem initializing the mgo depot")
+			return nil, errors.Wrap(err, "problem initializing the mongo depot")
 		}
 	}
 
