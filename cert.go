@@ -1,6 +1,7 @@
 package certdepot
 
 import (
+	"crypto/x509"
 	"io/ioutil"
 	"regexp"
 	"strings"
@@ -63,7 +64,7 @@ type CertificateOptions struct {
 // Init initializes a new CA.
 func (opts *CertificateOptions) Init(d depot.Depot) error {
 	if opts.CommonName == "" {
-		return errors.New("must provide Common Name for CA!")
+		return errors.New("must provide common name of CA")
 	}
 	formattedName := strings.Replace(opts.CommonName, " ", "_", -1)
 
@@ -182,7 +183,7 @@ func (opts *CertificateOptions) CertRequest(d depot.Depot) error {
 // Sign signs a CSR with a given CA for a new certificate.
 func (opts *CertificateOptions) Sign(d depot.Depot) error {
 	if opts.Host == "" {
-		return errors.New("must provide name of host!")
+		return errors.New("must provide name of host")
 	}
 	if opts.CA == "" {
 		return errors.New("must provide name of CA")
@@ -204,15 +205,15 @@ func (opts *CertificateOptions) Sign(d depot.Depot) error {
 	}
 
 	// validate that crt is allowed to sign certificates
-	raw_crt, err := crt.GetRawCertificate()
+	rawCrt, err := crt.GetRawCertificate()
 	if err != nil {
 		return errors.Wrap(err, "problem getting raw CA certificate")
 	}
 	// we punt on checking BasicConstraintsValid and checking MaxPathLen. The goal
 	// is to prevent accidentally creating invalid certificates, not protecting
 	// against malicious input.
-	if !raw_crt.IsCA {
-		return errors.Wrapf(err, "%s is not allowed to sign certificates", opts.CA)
+	if !rawCrt.IsCA {
+		return errors.Errorf("%s is not allowed to sign certificates", opts.CA)
 	}
 
 	var key *pkix.Key
@@ -253,7 +254,7 @@ func (opts CertificateOptions) getCertificateRequestName() (string, error) {
 	case len(opts.Domain) != 0:
 		return opts.Domain[0], nil
 	default:
-		return "", errors.New("must provide a common name or domain!")
+		return "", errors.New("must provide a common name or domain")
 	}
 }
 
@@ -303,4 +304,100 @@ func getNameAndKey(tag *depot.Tag) (string, string) {
 		return name, userCertRevocListKey
 	}
 	return "", ""
+}
+
+// Create Certificate is a convenience function for creating a certificate
+// request and signing it.
+func (opts *CertificateOptions) CreateCertificate(d depot.Depot) error {
+	if err := opts.CertRequest(d); err != nil {
+		return errors.Wrap(err, "problem creating the certificate request")
+	}
+	if err := opts.Sign(d); err != nil {
+		return errors.Wrap(err, "problem signing the certificate request")
+	}
+
+	return nil
+}
+
+// CreateCertificateOnExpiration checks if a certificate does not exist or if
+// it expires within the duration `after` and creates a new certificate if
+// either condition is met. True is returned if a certificate is created,
+// false otherwise. If the certificate is a CA, the behavior is undefined.
+func (opts *CertificateOptions) CreateCertificateOnExpiration(d depot.Depot, after time.Duration) (bool, error) {
+	dne := true
+	var created bool
+	var err error
+
+	if depot.CheckCertificate(d, opts.CommonName) {
+		dne, err = DeleteOnExpiration(d, opts.CommonName, after)
+		if err != nil {
+			return created, errors.Wrap(err, "problem deleting expiring certificate")
+		}
+	}
+
+	if dne {
+		err = opts.CreateCertificate(d)
+		created = true
+	}
+
+	return created, errors.Wrap(err, "problem creating certificate")
+}
+
+// ValidityBounds returns the date range for which the certificate is valid.
+func ValidityBounds(d depot.Depot, name string) (time.Time, time.Time, error) {
+	rawCert, err := getRawCertificate(d, name)
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.Wrap(err, "problem getting raw certificate")
+	}
+
+	return rawCert.NotBefore, rawCert.NotAfter, nil
+}
+
+// DeleteOnExpiration deletes the given certificate from the depot if it has an
+// expiration date within the duration `after`. True is returned if the
+// certificate is deleted, false otherwise.
+func DeleteOnExpiration(d depot.Depot, name string, after time.Duration) (bool, error) {
+	var deleted bool
+
+	if !depot.CheckCertificate(d, name) {
+		return deleted, nil
+	}
+
+	rawCert, err := getRawCertificate(d, name)
+	if err != nil {
+		return deleted, errors.Wrap(err, "problem getting raw certificate")
+	}
+
+	if rawCert.NotAfter.Before(time.Now().Add(after)) {
+		err = depot.DeleteCertificate(d, name)
+		if err != nil {
+			return deleted, errors.Wrap(err, "problem deleting expiring certificate")
+		}
+
+		if !rawCert.IsCA {
+			err = depot.DeleteCertificateSigningRequest(d, name)
+			if err != nil {
+				return deleted, errors.Wrap(err, "problem deleting expiring certificate signing request")
+			}
+		}
+
+		err = d.Delete(depot.PrivKeyTag(name))
+		if err != nil {
+			return deleted, errors.Wrap(err, "problem deleting expiring certificate key")
+		}
+
+		deleted = true
+	}
+
+	return deleted, nil
+}
+
+func getRawCertificate(d depot.Depot, name string) (*x509.Certificate, error) {
+	cert, err := depot.GetCertificate(d, name)
+	if err != nil {
+		return nil, errors.Wrap(err, "problem getting certificate from the depot")
+	}
+
+	rawCert, err := cert.GetRawCertificate()
+	return rawCert, errors.WithStack(err)
 }

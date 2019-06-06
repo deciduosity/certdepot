@@ -49,7 +49,7 @@ func (c *BootstrapDepotConfig) Validate() error {
 	}
 
 	if c.CAName == "" || c.ServiceName == "" {
-		return errors.New("must the name of the CA and service!")
+		return errors.New("must specify the name of the CA and service")
 	}
 
 	if (c.CACert != "" && c.CAKey == "") || (c.CACert == "" && c.CAKey != "") {
@@ -57,15 +57,15 @@ func (c *BootstrapDepotConfig) Validate() error {
 	}
 
 	if c.CAOpts != nil && c.CAOpts.CommonName != c.CAName {
-		return errors.New("CAName and CAOpts.CommonName must be the same!")
+		return errors.New("CAName and CAOpts.CommonName must be the same")
 	}
 
 	if c.ServiceOpts != nil && c.ServiceOpts.CommonName != c.ServiceName {
-		return errors.New("ServiceName and ServiceOpts.CommonName must be the same!")
+		return errors.New("ServiceName and ServiceOpts.CommonName must be the same")
 	}
 
 	if c.ServiceOpts != nil && c.ServiceOpts.CA != c.CAName {
-		return errors.New("CAName and ServiceOpts.CA must be the same!")
+		return errors.New("CAName and ServiceOpts.CA must be the same")
 	}
 
 	return nil
@@ -79,11 +79,7 @@ func BootstrapDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot
 // BootstrapDepot creates a certificate depot with a CA and service certificate
 // using the provided mongo driver client.
 func BootstrapDepotWithMongoClient(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
-	if err := conf.Validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid configuration")
-	}
-
-	d, err := createDepot(ctx, client, conf)
+	d, err := CreateDepot(ctx, client, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "problem creating depot")
 	}
@@ -107,9 +103,15 @@ func BootstrapDepotWithMongoClient(ctx context.Context, client *mongo.Client, co
 
 }
 
-func createDepot(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
+// CreateDepot creates a certificate depot with the given BootstrapDepotConfig.
+// If a mongo client is passed in it will be used to create the mongo depot.
+func CreateDepot(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
 	var d depot.Depot
 	var err error
+
+	if err = conf.Validate(); err != nil {
+		return nil, errors.Wrap(err, "invalid configuration")
+	}
 
 	if conf.FileDepot != "" {
 		d, err = depot.NewFileDepot(conf.FileDepot)
