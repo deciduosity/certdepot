@@ -8,8 +8,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Options for BootstrapDepot. Must provide either the name of the FileDepot or
-// the MongoDepot options, not both or neither.
+// BootstrapDepotConfig contains options for BootstrapDepot. Must provide
+// either the name of the FileDepot or the MongoDepot options, not both or
+// neither.
 type BootstrapDepotConfig struct {
 	// Name of FileDepot (directory). If a MongoDepot is desired, leave
 	// empty.
@@ -71,13 +72,14 @@ func (c *BootstrapDepotConfig) Validate() error {
 	return nil
 }
 
-// BootstrapDepot creates a certificate depot with a CA and service certificate.
+// BootstrapDepot creates a certificate depot with a CA and service
+// certificate.
 func BootstrapDepot(ctx context.Context, conf BootstrapDepotConfig) (depot.Depot, error) {
 	return BootstrapDepotWithMongoClient(ctx, nil, conf)
 }
 
-// BootstrapDepot creates a certificate depot with a CA and service certificate
-// using the provided mongo driver client.
+// BootstrapDepotWithMongoClient creates a certificate depot with a CA and
+// service certificate using the provided mongo driver client.
 func BootstrapDepotWithMongoClient(ctx context.Context, client *mongo.Client, conf BootstrapDepotConfig) (depot.Depot, error) {
 	d, err := CreateDepot(ctx, client, conf)
 	if err != nil {

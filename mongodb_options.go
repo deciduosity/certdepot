@@ -6,6 +6,7 @@ import (
 	"github.com/mongodb/anser/bsonutil"
 )
 
+// User stores information for a user in the mongo certificate depot.
 type User struct {
 	ID            string `bson:"_id"`
 	Cert          string `bson:"cert"`
@@ -22,8 +23,9 @@ var (
 	userCertRevocListKey = bsonutil.MustHaveTag(User{}, "CertRevocList")
 )
 
-// Options for NewMongoDBCertDepot, NewMongoDBCertDepotWithClient,
-// NewMgoCertDepot, and NewMgoCertDepotWithSession.
+// MongoDBOptions conatins options for NewMongoDBCertDepot,
+// NewMongoDBCertDepotWithClient, NewMgoCertDepot, and
+// NewMgoCertDepotWithSession.
 type MongoDBOptions struct {
 	MongoDBURI           string        `bson:"mongodb_uri" json:"mongodb_uri" yaml:"mongodb_uri"`
 	DatabaseName         string        `bson:"db_name" json:"db_name" yaml:"db_name"`

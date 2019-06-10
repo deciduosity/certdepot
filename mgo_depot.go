@@ -129,7 +129,7 @@ func (m *mgoCertDepot) Get(tag *depot.Tag) ([]byte, error) {
 	}
 
 	if len(data) == 0 {
-		return nil, errors.New("no data available!")
+		return nil, errors.New("no data available")
 	}
 	return data, nil
 }

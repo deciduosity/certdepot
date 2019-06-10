@@ -12,7 +12,7 @@ import (
 	"github.com/square/certstrap/pkix"
 )
 
-// Options to use for Init, CertRequest, and Sign.
+// CertificateOptions contains options to use for Init, CertRequest, and Sign.
 type CertificateOptions struct {
 	//
 	// Options specific to Init and CertRequest.
@@ -69,7 +69,7 @@ func (opts *CertificateOptions) Init(d depot.Depot) error {
 	formattedName := strings.Replace(opts.CommonName, " ", "_", -1)
 
 	if depot.CheckCertificate(d, formattedName) || depot.CheckPrivateKey(d, formattedName) {
-		return errors.New("CA with specified name already exists!")
+		return errors.New("CA with specified name already exists")
 	}
 
 	key, err := opts.getOrCreatePrivateKey(formattedName)
@@ -140,7 +140,7 @@ func (opts *CertificateOptions) CertRequest(d depot.Depot) error {
 	}
 
 	if depot.CheckCertificateSigningRequest(d, formattedName) || depot.CheckPrivateKey(d, formattedName) {
-		return errors.New("certificate request has existed!")
+		return errors.New("certificate request has existed")
 	}
 
 	key, err := opts.getOrCreatePrivateKey(formattedName)
@@ -192,7 +192,7 @@ func (opts *CertificateOptions) Sign(d depot.Depot) error {
 	formattedCAName := strings.Replace(opts.CA, " ", "_", -1)
 
 	if depot.CheckCertificate(d, formattedReqName) {
-		return errors.New("certificate has existed!")
+		return errors.New("certificate has existed")
 	}
 
 	csr, err := depot.GetCertificateSigningRequest(d, formattedReqName)
@@ -306,7 +306,7 @@ func getNameAndKey(tag *depot.Tag) (string, string) {
 	return "", ""
 }
 
-// Create Certificate is a convenience function for creating a certificate
+// CreateCertificate is a convenience function for creating a certificate
 // request and signing it.
 func (opts *CertificateOptions) CreateCertificate(d depot.Depot) error {
 	if err := opts.CertRequest(d); err != nil {
