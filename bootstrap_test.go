@@ -276,10 +276,11 @@ func TestBootstrapDepot(t *testing.T) {
 	} {
 		t.Run(impl.name, func(t *testing.T) {
 			for _, test := range []struct {
-				name  string
-				conf  BootstrapDepotConfig
-				setup func(depot.Depot)
-				test  func(depot.Depot)
+				name   string
+				conf   BootstrapDepotConfig
+				setup  func(depot.Depot)
+				test   func(depot.Depot)
+				hasErr bool
 			}{
 				{
 					name: "ExistingCertsInDepot",
@@ -348,19 +349,50 @@ func TestBootstrapDepot(t *testing.T) {
 						},
 					},
 				},
+				{
+					name: "NilCAOpts",
+					conf: BootstrapDepotConfig{
+						CAName:      caName,
+						ServiceName: serviceName,
+						ServiceOpts: &CertificateOptions{
+							CommonName: serviceName,
+							Host:       serviceName,
+							CA:         caName,
+							Expires:    time.Hour,
+						},
+					},
+					hasErr: true,
+				},
+				{
+					name: "NilServiceOpts",
+					conf: BootstrapDepotConfig{
+						CAName:      caName,
+						ServiceName: serviceName,
+						CAOpts: &CertificateOptions{
+							CommonName: caName,
+							Expires:    time.Hour,
+						},
+					},
+					hasErr: true,
+				},
 			} {
 				t.Run(test.name, func(t *testing.T) {
 					implDepot := impl.setup(&test.conf)
 					if test.setup != nil {
 						test.setup(implDepot)
 					}
-					bd, err := impl.bootstrapFunc(test.conf)
-					require.NoError(t, err)
 
-					assert.True(t, bd.Check(depot.CrtTag(caName)))
-					assert.True(t, bd.Check(depot.PrivKeyTag(caName)))
-					assert.True(t, bd.Check(depot.CrtTag(serviceName)))
-					assert.True(t, bd.Check(depot.PrivKeyTag(serviceName)))
+					bd, err := impl.bootstrapFunc(test.conf)
+					if test.hasErr {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+
+						assert.True(t, bd.Check(depot.CrtTag(caName)))
+						assert.True(t, bd.Check(depot.PrivKeyTag(caName)))
+						assert.True(t, bd.Check(depot.CrtTag(serviceName)))
+						assert.True(t, bd.Check(depot.PrivKeyTag(serviceName)))
+					}
 
 					if test.test != nil {
 						test.test(bd)

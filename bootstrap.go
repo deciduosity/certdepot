@@ -147,6 +147,9 @@ func addCert(d depot.Depot, conf BootstrapDepotConfig) error {
 }
 
 func createCA(d depot.Depot, conf BootstrapDepotConfig) error {
+	if conf.CAOpts == nil {
+		return errors.New("cannot create a new CA with nil CA options")
+	}
 	if err := conf.CAOpts.Init(d); err != nil {
 		return errors.Wrap(err, "problem initializing the ca")
 	}
@@ -158,6 +161,9 @@ func createCA(d depot.Depot, conf BootstrapDepotConfig) error {
 }
 
 func createServerCert(d depot.Depot, conf BootstrapDepotConfig) error {
+	if conf.ServiceOpts == nil {
+		return errors.New("cannot create a new server cert with nil service options")
+	}
 	if err := conf.ServiceOpts.CertRequest(d); err != nil {
 		return errors.Wrap(err, "problem creating service cert request")
 	}
