@@ -3,6 +3,7 @@ package certdepot
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/x509"
 	"io/ioutil"
 	"net"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mongodb/grip"
 	"github.com/square/certstrap/depot"
 	"github.com/square/certstrap/pkix"
 	"github.com/stretchr/testify/assert"
@@ -327,6 +329,8 @@ func TestCertRequest(t *testing.T) {
 		*/
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			opts.Reset()
+			defer opts.Reset()
 			test.changeOpts()
 			err = opts.CertRequest(d)
 
@@ -352,6 +356,320 @@ func TestCertRequest(t *testing.T) {
 				test.keyTest()
 			}
 		})
+	}
+}
+
+func TestInMemory(t *testing.T) {
+	// Resets depot state
+	clearByName := func(d depot.Depot, name string) error {
+		catcher := grip.NewBasicCatcher()
+		if csrTag := depot.CsrTag(name); d.Check(csrTag) {
+			catcher.Add(d.Delete(csrTag))
+		}
+		if keyTag := depot.PrivKeyTag(name); d.Check(keyTag) {
+			catcher.Add(d.Delete(keyTag))
+		}
+		if crtTag := depot.CrtTag(name); d.Check(crtTag) {
+			catcher.Add(d.Delete(crtTag))
+		}
+		return catcher.Resolve()
+	}
+
+	for testName, testCase := range map[string]func(t *testing.T, d depot.Depot, opts *CertificateOptions){
+		"CertRequestInMemory": func(t *testing.T, d depot.Depot, opts *CertificateOptions) {
+			checkMatchingCSR := func(t *testing.T, opts *CertificateOptions, rawCSR *x509.CertificateRequest) {
+				assert.Equal(t, opts.CommonName, rawCSR.Subject.CommonName)
+				assert.Equal(t, []string{opts.Organization}, rawCSR.Subject.Organization)
+				assert.Equal(t, []string{opts.Country}, rawCSR.Subject.Country)
+				assert.Equal(t, []string{opts.Locality}, rawCSR.Subject.Locality)
+				assert.Equal(t, []string{opts.OrganizationalUnit}, rawCSR.Subject.OrganizationalUnit)
+				assert.Equal(t, []string{opts.Province}, rawCSR.Subject.Province)
+				assert.Equal(t, convertIPs(opts.IP), rawCSR.IPAddresses)
+				assert.Equal(t, opts.Domain, rawCSR.DNSNames)
+			}
+
+			exportCSRAndKey := func(t *testing.T, csr *pkix.CertificateSigningRequest, key *pkix.Key) ([]byte, []byte) {
+				pemCSR, err := csr.Export()
+				require.NoError(t, err)
+				pemKey, err := key.ExportPrivate()
+				require.NoError(t, err)
+				return pemCSR, pemKey
+			}
+
+			for subTestName, subTestCase := range map[string]func(t *testing.T, name string){
+				"Succeeds": func(t *testing.T, name string) {
+					csr, _, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+
+					rawCSR, err := csr.GetRawCertificateSigningRequest()
+					require.NoError(t, err)
+
+					checkMatchingCSR(t, opts, rawCSR)
+
+					assert.False(t, depot.CheckCertificateSigningRequest(d, name))
+					assert.False(t, depot.CheckPrivateKey(d, name))
+				},
+				"SucceedsAfterCertRequestInDepot": func(t *testing.T, name string) {
+					require.NoError(t, opts.CertRequest(d))
+					csr, key, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+
+					pemCSR, pemKey := exportCSRAndKey(t, csr, key)
+
+					dbCSR, err := d.Get(depot.CsrTag(name))
+					require.NoError(t, err)
+
+					dbKey, err := d.Get(depot.PrivKeyTag(name))
+					require.NoError(t, err)
+
+					assert.Equal(t, dbCSR, pemCSR)
+					assert.Equal(t, dbKey, pemKey)
+				},
+				"ReturnsIdenticalAsSubsequentCertRequest": func(t *testing.T, name string) {
+					csr, key, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					pemCSR, pemKey := exportCSRAndKey(t, csr, key)
+
+					require.NoError(t, opts.CertRequest(d))
+					dbCSR, err := d.Get(depot.CsrTag(name))
+					require.NoError(t, err)
+					dbKey, err := d.Get(depot.PrivKeyTag(name))
+					require.NoError(t, err)
+
+					assert.Equal(t, dbCSR, pemCSR)
+					assert.Equal(t, dbKey, pemKey)
+				},
+				"ReturnsIdenticalOnSubsequentCalls": func(t *testing.T, name string) {
+					csr, key, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					pemCSR, pemKey := exportCSRAndKey(t, csr, key)
+
+					sameCSR, sameKey, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					pemSameCSR, pemSameKey := exportCSRAndKey(t, sameCSR, sameKey)
+
+					assert.Equal(t, pemCSR, pemSameCSR)
+					assert.Equal(t, pemKey, pemSameKey)
+				},
+			} {
+				t.Run(subTestName, func(t *testing.T) {
+					name, err := opts.getFormattedCertificateRequestName()
+					require.NoError(t, err)
+					opts.Reset()
+					require.NoError(t, clearByName(d, name))
+					defer func() {
+						opts.Reset()
+						assert.NoError(t, clearByName(d, name))
+					}()
+
+					subTestCase(t, name)
+				})
+			}
+		},
+		"PutCertRequest": func(t *testing.T, d depot.Depot, opts *CertificateOptions) {
+			for subTestName, subTestCase := range map[string]func(t *testing.T, name string){
+				"FailsWithoutCertRequestInMemory": func(t *testing.T, name string) {
+					assert.Error(t, opts.PutCertRequestFromMemory(d))
+				},
+				"FailsAfterCertRequest": func(t *testing.T, name string) {
+					require.NoError(t, opts.CertRequest(d))
+					assert.Error(t, opts.PutCertRequestFromMemory(d))
+				},
+				"SucceedsAfterCertRequestInMemory": func(t *testing.T, name string) {
+					csr, key, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					require.NoError(t, opts.PutCertRequestFromMemory(d))
+
+					pemCSR, err := csr.Export()
+					require.NoError(t, err)
+					depotCSR, err := d.Get(depot.CsrTag(name))
+					require.NoError(t, err)
+					assert.Equal(t, pemCSR, depotCSR)
+
+					pemKey, err := key.ExportPrivate()
+					require.NoError(t, err)
+					depotKey, err := d.Get(depot.PrivKeyTag(name))
+					require.NoError(t, err)
+					assert.Equal(t, pemKey, depotKey)
+				},
+			} {
+				t.Run(subTestName, func(t *testing.T) {
+					name, err := opts.getFormattedCertificateRequestName()
+					require.NoError(t, err)
+					opts.Reset()
+					require.NoError(t, clearByName(d, name))
+					defer func() {
+						opts.Reset()
+						assert.NoError(t, clearByName(d, name))
+					}()
+
+					subTestCase(t, name)
+				})
+			}
+		},
+		"SignInMemory": func(t *testing.T, d depot.Depot, opts *CertificateOptions) {
+			checkMatchingCert := func(t *testing.T, opts *CertificateOptions, rawCrt *x509.Certificate) {
+				assert.Equal(t, opts.CommonName, rawCrt.Subject.CommonName)
+				assert.Equal(t, []string{opts.Organization}, rawCrt.Subject.Organization)
+				assert.Equal(t, []string{opts.Country}, rawCrt.Subject.Country)
+				assert.Equal(t, []string{opts.Locality}, rawCrt.Subject.Locality)
+				assert.Equal(t, []string{opts.OrganizationalUnit}, rawCrt.Subject.OrganizationalUnit)
+				assert.Equal(t, []string{opts.Province}, rawCrt.Subject.Province)
+				assert.Equal(t, convertIPs(opts.IP), rawCrt.IPAddresses)
+				assert.Equal(t, opts.Domain, rawCrt.DNSNames)
+			}
+
+			for subTestName, subTestCase := range map[string]func(t *testing.T, name string){
+				"FailsWithoutCSR": func(t *testing.T, name string) {
+					assert.Error(t, opts.PutCertRequestFromMemory(d))
+				},
+				"SucceedsAfterCertRequestInMemory": func(t *testing.T, name string) {
+					_, _, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					crt, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+
+					rawCrt, err := crt.GetRawCertificate()
+					require.NoError(t, err)
+
+					checkMatchingCert(t, opts, rawCrt)
+				},
+				"SucceedsAfterCertRequest": func(t *testing.T, name string) {
+					require.NoError(t, opts.CertRequest(d))
+					crt, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+
+					rawCrt, err := crt.GetRawCertificate()
+					require.NoError(t, err)
+					checkMatchingCert(t, opts, rawCrt)
+				},
+				"ReturnsIdenticalAsSubsequentSign": func(t *testing.T, name string) {
+					_, _, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+
+					crt, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+
+					pemCrt, err := crt.Export()
+					require.NoError(t, err)
+
+					require.NoError(t, opts.Sign(d))
+
+					dbCrt, err := d.Get(depot.CrtTag(name))
+					require.NoError(t, err)
+
+					assert.Equal(t, dbCrt, pemCrt)
+				},
+				"ReturnsIdenticalOnSubsequentCalls": func(t *testing.T, name string) {
+					_, _, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+
+					crt, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+
+					pemCrt, err := crt.Export()
+					require.NoError(t, err)
+
+					sameCrt, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+
+					pemSameCrt, err := sameCrt.Export()
+					require.NoError(t, err)
+
+					assert.Equal(t, pemCrt, pemSameCrt)
+				},
+			} {
+				t.Run(subTestName, func(t *testing.T) {
+					name, err := opts.getFormattedCertificateRequestName()
+					require.NoError(t, err)
+					opts.Reset()
+					require.NoError(t, clearByName(d, name))
+					defer func() {
+						opts.Reset()
+						assert.NoError(t, clearByName(d, name))
+					}()
+
+					subTestCase(t, name)
+				})
+			}
+		},
+		"PutCertFromMemory": func(t *testing.T, d depot.Depot, opts *CertificateOptions) {
+			for subTestName, subTestCase := range map[string]func(t *testing.T, name string){
+				"FailsWithoutSignInMemory": func(t *testing.T, name string) {
+					assert.Error(t, opts.PutCertFromMemory(d))
+				},
+				"SucceedsWithSignInMemory": func(t *testing.T, name string) {
+					_, _, err := opts.CertRequestInMemory(d)
+					require.NoError(t, err)
+					cert, err := opts.SignInMemory(d)
+					require.NoError(t, err)
+					require.NoError(t, opts.PutCertFromMemory(d))
+
+					pemCert, err := cert.Export()
+					require.NoError(t, err)
+					depotCert, err := d.Get(depot.CrtTag(name))
+					require.NoError(t, err)
+					assert.Equal(t, pemCert, depotCert)
+				},
+			} {
+				t.Run(subTestName, func(t *testing.T) {
+					name, err := opts.getFormattedCertificateRequestName()
+					require.NoError(t, err)
+					opts.Reset()
+					require.NoError(t, clearByName(d, name))
+
+					defer func() {
+						opts.Reset()
+						assert.NoError(t, clearByName(d, name))
+					}()
+
+					subTestCase(t, name)
+				})
+			}
+		},
+	} {
+		t.Run(testName, func(t *testing.T) {
+			caOpts := &CertificateOptions{
+				Organization:       "mongodb",
+				Country:            "USA",
+				Locality:           "NYC",
+				OrganizationalUnit: "evergreen",
+				Province:           "Manhattan",
+				Expires:            24 * time.Hour,
+				IP:                 []string{"0.0.0.0", "1.1.1.1"},
+				Host:               "evergreen",
+				CA:                 "ca",
+				CommonName:         "ca",
+				CAPassphrase:       "passphrase",
+			}
+
+			tempDir, err := ioutil.TempDir(".", "cert-test")
+			require.NoError(t, err)
+			defer func() {
+				assert.NoError(t, os.RemoveAll(tempDir))
+			}()
+			d, err := depot.NewFileDepot(tempDir)
+			require.NoError(t, err)
+
+			require.NoError(t, caOpts.Init(d))
+
+			opts := &CertificateOptions{
+				CA:                 "ca",
+				CommonName:         "test",
+				Host:               "test",
+				Domain:             []string{"test"},
+				Expires:            24 * time.Hour,
+				Organization:       "10gen",
+				Country:            "Canada",
+				Locality:           "Toronto",
+				Province:           "Ontario",
+				OrganizationalUnit: "perf",
+				IP:                 []string{"0.0.0.0", "1.1.1.1"},
+			}
+
+			testCase(t, d, opts)
+		})
+
 	}
 }
 
@@ -498,6 +816,12 @@ func TestSign(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			crtOpts.Reset()
+			csrOpts.Reset()
+			defer func() {
+				csrOpts.Reset()
+				crtOpts.Reset()
+			}()
 			test.changeOpts()
 			err = crtOpts.Sign(d)
 
@@ -587,6 +911,7 @@ func TestCreateCertificateOnExpiration(t *testing.T) {
 	assert.True(t, rawUserCrt.NotAfter.After(time.Now().Add(23*time.Hour)))
 
 	// user cert exists and expiring
+	opts.Reset()
 	opts.Expires = time.Hour
 	created, err = opts.CreateCertificateOnExpiration(d, 25*time.Hour)
 	assert.NoError(t, err)

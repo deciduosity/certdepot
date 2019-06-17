@@ -8,8 +8,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// PutTTL sets the TTL to the given expiration time for the id. If the id is not
-// found in the collection, this will error.
+// PutTTL sets the TTL to the given expiration time for the name. If the name is
+// not found in the collection, this will error.
 func (m *mongoDepot) PutTTL(name string, expiration time.Time) error {
 	formattedName := strings.Replace(name, " ", "_", -1)
 	updateRes, err := m.client.Database(m.databaseName).Collection(m.collectionName).UpdateOne(m.ctx,
