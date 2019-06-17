@@ -115,6 +115,11 @@ func (opts *CertificateOptions) Init(d depot.Depot) error {
 		return errors.Wrap(err, "problem saving certificate revocation list")
 	}
 
+	if md, ok := d.(*mongoDepot); ok {
+		if err = md.PutTTL(formattedName, expiresTime); err != nil {
+			return errors.Wrap(err, "problem setting certificate TTL")
+		}
+	}
 	return nil
 }
 
@@ -242,6 +247,12 @@ func (opts *CertificateOptions) Sign(d depot.Depot) error {
 
 	if err = depot.PutCertificate(d, formattedReqName, crtOut); err != nil {
 		return errors.Wrap(err, "problem saving certificate")
+	}
+
+	if md, ok := d.(*mongoDepot); ok {
+		if err = md.PutTTL(formattedReqName, expiresTime); err != nil {
+			return errors.Wrap(err, "problem setting certificate TTL")
+		}
 	}
 
 	return nil
