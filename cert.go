@@ -359,16 +359,20 @@ func (opts *CertificateOptions) PutCertFromMemory(wd Depot) error {
 	return nil
 }
 
-func (opts CertificateOptions) getFormattedCertificateRequestName() (string, error) {
-	name, err := opts.getCertificateRequestName()
-	if err != nil {
-		return "", errors.Wrap(err, "could not get name for certificate request")
-	}
+func getFormattedCertificateRequestName(name string) (string, error) {
 	filenameAcceptable, err := regexp.Compile("[^a-zA-Z0-9._-]")
 	if err != nil {
 		return "", errors.Wrap(err, "error compiling regex")
 	}
 	return string(filenameAcceptable.ReplaceAll([]byte(name), []byte("_"))), nil
+}
+
+func (opts CertificateOptions) getFormattedCertificateRequestName() (string, error) {
+	name, err := opts.getCertificateRequestName()
+	if err != nil {
+		return "", errors.Wrap(err, "could not get name for certificate request")
+	}
+	return getFormattedCertificateRequestName(name)
 }
 
 func (opts CertificateOptions) getCertificateRequestName() (string, error) {
@@ -406,20 +410,21 @@ func (opts CertificateOptions) getOrCreatePrivateKey() (*pkix.Key, error) {
 	return key, nil
 }
 
-func getNameAndKey(tag *depot.Tag) (string, string) {
+func getNameAndKey(tag *depot.Tag) (string, string, error) {
 	if name := depot.GetNameFromCrtTag(tag); name != "" {
-		return name, userCertKey
+		return strings.Replace(name, " ", "_", -1), userCertKey, nil
 	}
 	if name := depot.GetNameFromPrivKeyTag(tag); name != "" {
-		return name, userPrivateKeyKey
+		return strings.Replace(name, " ", "_", -1), userPrivateKeyKey, nil
 	}
 	if name := depot.GetNameFromCsrTag(tag); name != "" {
-		return name, userCertReqKey
+		formattedName, err := getFormattedCertificateRequestName(name)
+		return formattedName, userCertReqKey, err
 	}
 	if name := depot.GetNameFromCrlTag(tag); name != "" {
-		return name, userCertRevocListKey
+		return strings.Replace(name, " ", "_", -1), userCertRevocListKey, nil
 	}
-	return "", ""
+	return "", "", nil
 }
 
 // CreateCertificate is a convenience function for creating a certificate
