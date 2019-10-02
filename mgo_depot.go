@@ -13,6 +13,7 @@ type mgoCertDepot struct {
 	session        *mgo.Session
 	databaseName   string
 	collectionName string
+	opts           DepotOptions
 }
 
 // NewMgoCertDepot creates a new cert depot using the legacy mgo driver.
@@ -41,6 +42,7 @@ func NewMgoCertDepotWithSession(s *mgo.Session, opts *MongoDBOptions) (Depot, er
 		session:        s,
 		databaseName:   opts.DatabaseName,
 		collectionName: opts.CollectionName,
+		opts:           opts.DepotOptions,
 	}, nil
 }
 
@@ -158,6 +160,12 @@ func (m *mgoCertDepot) Delete(tag *depot.Tag) error {
 	}
 
 	return nil
+}
+
+func (m *mgoCertDepot) Save(name string, creds *Credentials) error { return depotSave(m, name, creds) }
+func (m *mgoCertDepot) Find(name string) (*Credentials, error)     { return depotFind(m, name, m.opts) }
+func (m *mgoCertDepot) Generate(name string) (*Credentials, error) {
+	return depotGenerate(m, name, m.opts)
 }
 
 func errNotNotFound(err error) bool {

@@ -17,6 +17,7 @@ type mongoDepot struct {
 	client         *mongo.Client
 	databaseName   string
 	collectionName string
+	opts           DepotOptions
 }
 
 // NewMongoDBCertDepot returns a new cert depot backed by MongoDB using the
@@ -36,6 +37,7 @@ func NewMongoDBCertDepot(ctx context.Context, opts *MongoDBOptions) (Depot, erro
 		client:         client,
 		databaseName:   opts.DatabaseName,
 		collectionName: opts.CollectionName,
+		opts:           opts.DepotOptions,
 	}, nil
 }
 
@@ -55,6 +57,7 @@ func NewMongoDBCertDepotWithClient(ctx context.Context, client *mongo.Client, op
 		client:         client,
 		databaseName:   opts.DatabaseName,
 		collectionName: opts.CollectionName,
+		opts:           opts.DepotOptions,
 	}, nil
 }
 
@@ -170,6 +173,11 @@ func (m *mongoDepot) Delete(tag *depot.Tag) error {
 	}
 
 	return nil
+}
+func (m *mongoDepot) Save(name string, creds *Credentials) error { return depotSave(m, name, creds) }
+func (m *mongoDepot) Find(name string) (*Credentials, error)     { return depotFind(m, name, m.opts) }
+func (m *mongoDepot) Generate(name string) (*Credentials, error) {
+	return depotGenerate(m, name, m.opts)
 }
 
 func errNotNoDocuments(err error) bool {
