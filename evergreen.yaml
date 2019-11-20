@@ -43,10 +43,10 @@ functions:
       binary: make
       args: ["${make_args|}", "${target}"]
       env:
-        GO_BIN_PATH: ${gobin}
         DISABLE_COVERAGE: ${disable_coverage}
-        GOROOT: ${goroot}
         GOPATH: ${workdir}/gopath
+        GOROOT: ${goroot}
+        GO_BIN_PATH: ${go_bin_path}
   set-up-mongodb:
     - command: subprocess.exec
       type: setup
@@ -129,8 +129,7 @@ tasks:
           directory: gopath/src/github.com/evergreen-ci/certdepot
       - func: set-up-mongodb
       - func: run-make
-        vars:
-          target: "coverage-html"
+        vars: { target: "coverage-html" }
 
   - <<: *run-build-with-mongodb
     tags: ["test"]
@@ -148,6 +147,8 @@ buildvariants:
     display_name: Race Detector (Arch Linux)
     expansions:
       mongodb_url: http://fastdl.mongodb.org/linux/mongodb-linux-x86_64-4.0.1.tgz
+      goroot: /opt/golang/go1.11
+      go_bin_path: /opt/golang/go1.11/bin/go
     run_on:
       - archlinux-test
     tasks:
@@ -159,7 +160,7 @@ buildvariants:
     expansions:
       mongodb_url: http://fastdl.mongodb.org/linux/mongodb-linux-x86_64-4.0.1.tgz
       goroot: /opt/golang/go1.9
-      gobin: /opt/golang/go1.9/bin/go
+      go_bin_path: /opt/golang/go1.9/bin/go
       disable_coverage: true
     run_on:
       - ubuntu1604-test
@@ -171,7 +172,7 @@ buildvariants:
     expansions:
       mongodb_url: https://fastdl.mongodb.org/osx/mongodb-osx-ssl-x86_64-4.0.1.tgz
       goroot: /opt/golang/go1.9
-      gobin: /opt/golang/go1.9/bin/go
+      go_bin_path: /opt/golang/go1.9/bin/go
       disable_coverage: true
     run_on:
       - macos-1014
@@ -184,8 +185,8 @@ buildvariants:
       - windows-64-vs2015-small
     expansions:
       mongodb_url: https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2008plus-ssl-4.0.1.zip
-      goroot: c:/golang/go1.9
-      gobin: /cygdrive/c/golang/go1.9/bin/go
+      goroot: c:/golang/go1.13
+      go_bin_path: /cygdrive/c/golang/go1.13/bin/go
       disable_coverage: true
       extension: ".exe"
       archiveExt: ".zip"

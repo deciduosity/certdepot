@@ -136,7 +136,8 @@ func TestDepot(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, tag *depot.Tag, data []byte) {
-				name, key, err := getNameAndKey(tag)
+				var name, key string
+				name, key, err = getNameAndKey(tag)
 				require.NoError(t, err)
 
 				u := &User{}
@@ -283,7 +284,8 @@ func TestDepot(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, tag *depot.Tag, data []byte) {
-				name, key, err := getNameAndKey(tag)
+				var name, key string
+				name, key, err = getNameAndKey(tag)
 				require.NoError(t, err)
 
 				u := &User{}
