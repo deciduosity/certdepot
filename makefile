@@ -47,19 +47,17 @@ ifneq (,$(RACE_DETECTOR))
 testArgs += -race
 endif
 # test execution and output handlers
-$(buildDir)/:
-	@mkdir -p $@
 $(buildDir)/output.%.test:$(buildDir)/ .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) | tee $@
 	@! grep -s -q -e "^FAIL" $@ && ! grep -s -q "^WARNING: DATA RACE" $@
 $(buildDir)/output.test:$(buildDir)/ .FORCE
-	$(goEnv) $(gobin) test $(testArgs) ./... | tee $@
+	$(goEnv) $(gobin) test $(testArgs) ./ | tee $@
 	@! grep -s -q -e "^FAIL" $@ && ! grep -s -q "^WARNING: DATA RACE" $@
 $(buildDir)/output.%.coverage:$(buildDir)/ .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) -covermode=count -coverprofile $@ | tee $(buildDir)/output.$*.test
 	@-[ -f $@ ] && $(gobin) tool cover -func=$@ | sed 's%$(projectPath)/%%' | column -t
 $(buildDir)/output.coverage:$(buildDir)/ .FORCE
-	$(goEnv) $(gobin) test $(testArgs) -covermode=count -coverprofile $@ ./... | tee $(buildDir)/output.$*.test
+	$(goEnv) $(gobin) test $(testArgs) -covermode=count -coverprofile $@ ./ | tee $(buildDir)/output.$*.test
 $(buildDir)/output.%.coverage.html:$(buildDir)/output.%.coverage
 	$(goEnv) $(gobin) tool cover -html=$< -o $@
 $(buildDir)/output.coverage.html: $(buildDir)/output.coverage .FORCE
@@ -75,7 +73,7 @@ $(buildDir)/output.lint:$(buildDir)/run-linter $(buildDir) .FORCE
 
 # userfacing targets for basic build and development operations
 compile:
-	$(goEnv) $(gobin) build ./...
+	$(goEnv) $(gobin) build ./
 test:$(buildDir)/output.test
 coverage:$(buildDir)/output.coverage
 	$(goEnv) $(gobin) tool cover -func=$< | sed -E 's%github.com/.*/certdepot/%%' | column -t
