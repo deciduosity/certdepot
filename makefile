@@ -47,16 +47,18 @@ ifneq (,$(RACE_DETECTOR))
 testArgs += -race
 endif
 # test execution and output handlers
-$(buildDir)/output.%.test:$(buildDir)/ .FORCE
+$(buildDir): compile
+	@mkdir -p $@
+$(buildDir)/output.%.test:$(buildDir) .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) | tee $@
 	@! grep -s -q -e "^FAIL" $@ && ! grep -s -q "^WARNING: DATA RACE" $@
-$(buildDir)/output.test:$(buildDir)/ .FORCE
+$(buildDir)/output.test:$(buildDir) .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./ | tee $@
 	@! grep -s -q -e "^FAIL" $@ && ! grep -s -q "^WARNING: DATA RACE" $@
-$(buildDir)/output.%.coverage:$(buildDir)/ .FORCE
+$(buildDir)/output.%.coverage:$(buildDir) .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) -covermode=count -coverprofile $@ | tee $(buildDir)/output.$*.test
 	@-[ -f $@ ] && $(gobin) tool cover -func=$@ | sed 's%$(projectPath)/%%' | column -t
-$(buildDir)/output.coverage:$(buildDir)/ .FORCE
+$(buildDir)/output.coverage:$(buildDir) .FORCE
 	$(goEnv) $(gobin) test $(testArgs) -covermode=count -coverprofile $@ ./ | tee $(buildDir)/output.$*.test
 $(buildDir)/output.%.coverage.html:$(buildDir)/output.%.coverage
 	$(goEnv) $(gobin) tool cover -html=$< -o $@
@@ -87,10 +89,6 @@ phony += lint build race test coverage coverage-html
 .PRECIOUS:$(foreach target,$(packages),$(buildDir)/output.$(target).lint)
 .PRECIOUS:$(buildDir)/output.lint
 # end front-ends
-
-
-$(buildDir): compile
-	@mkdir -p $@
 
 
 vendor-clean:
