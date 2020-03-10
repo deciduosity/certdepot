@@ -1,8 +1,7 @@
 buildDir := build
-srcFiles := $(shell find . -name "*.go" -not -path "./$(buildDir)/*" -not -name "*_test.go" -not -path "*\#*")
-testFiles := $(shell find . -name "*.go" -not -path "./$(buildDir)/*" -not -path "*\#*")
-
+name := certdepot
 packages := certdepot
+projectPath := github.com/evergreen-ci/certdepot
 #
 # override the go binary path if set
 gobin := $(GO_BIN_PATH)
@@ -19,44 +18,16 @@ gocache := $(shell cygpath -m $(gocache))
 endif
 goEnv := GOPATH=$(gopath) GOCACHE=$(gocache)$(if $(GO_BIN_PATH), PATH="$(shell dirname $(GO_BIN_PATH)):$(PATH)")
 
-# start linting configuration
-#   package, testing, and linter dependencies specified
-#   separately. This is a temporary solution: eventually we should
-#   vendorize all of these dependencies.
-lintDeps := github.com/alecthomas/gometalinter
-#   include test files and give linters 40s to run to avoid timeouts
-lintArgs := --tests --deadline=13m --vendor
-#   gotype produces false positives because it reads .a files which
-#   are rarely up to date.
-lintArgs += --disable="gotype" --disable="gosec" --disable="gocyclo" --enable="golint"
-lintArgs += --skip="build"
-#   enable and configure additional linters
-lintArgs += --line-length=100 --dupl-threshold=150
-#   some test cases are structurally similar, and lead to dupl linter
-#   warnings, but are important to maintain separately, and would be
-#   difficult to test without a much more complex reflection/code
-#   generation approach, so we ignore dupl errors in tests.
-lintArgs += --exclude="warning: duplicate of .*_test.go"
-#   go lint warns on an error in docstring format, erroneously because
-#   it doesn't consider the entire package.
-lintArgs += --exclude="warning: package comment should be of the form \"Package .* ...\""
-#   known issues that the linter picks up that are not relevant in our cases
-lintArgs += --exclude="file is not goimported" # top-level mains aren't imported
-lintArgs += --exclude="error return value not checked .defer.*"
-# end linting configuration
 
-
-# start dependency installation tools
-#   implementation details for being able to lazily install dependencies
-lintDeps := $(addprefix $(gopath)/src/,$(lintDeps))
-$(gopath)/src/%:
-	@-[ ! -d $(gopath) ] && mkdir -p $(gopath) || true
-	$(goEnv) $(gobin) get $(subst $(gopath)/src/,,$@)
-$(buildDir)/run-linter:cmd/run-linter/run-linter.go $(buildDir)/.lintSetup
-	 $(goEnv) $(gobin) build -o $@ $<
-$(buildDir)/.lintSetup:$(lintDeps) $(buildDir)
-	@-$(goEnv) $(gopath)/bin/gometalinter --install >/dev/null && touch $@
-# end dependency installation tools
+# start lint setup targets
+lintDeps := $(buildDir)/.lintSetup $(buildDir)/run-linter $(buildDir)/golangci-lint
+$(buildDir)/.lintSetup:$(buildDir)/golangci-lint
+	@touch $@
+$(buildDir)/golangci-lint:$(buildDir)
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/76a82c6ed19784036bbf2d4c84d0228ca12381a4/install.sh | sh -s -- -b $(buildDir) v1.23.8 >/dev/null 2>&1
+$(buildDir)/run-linter:cmd/run-linter/run-linter.go $(buildDir)/.lintSetup $(buildDir)
+	@$(goEnv) $(gobin) build -o $@ $<
+# end lint setup targets
 
 
 testArgs := -v
@@ -77,7 +48,7 @@ testArgs += -race
 endif
 # test execution and output handlers
 $(buildDir)/:
-	mkdir -p $@
+	@mkdir -p $@
 $(buildDir)/output.%.test:$(buildDir)/ .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) | tee $@
 	@! grep -s -q -e "^FAIL" $@ && ! grep -s -q "^WARNING: DATA RACE" $@
@@ -87,45 +58,41 @@ $(buildDir)/output.test:$(buildDir)/ .FORCE
 $(buildDir)/output.%.coverage:$(buildDir)/ .FORCE
 	$(goEnv) $(gobin) test $(testArgs) ./$(if $(subst $(name),,$*),$*,) -covermode=count -coverprofile $@ | tee $(buildDir)/output.$*.test
 	@-[ -f $@ ] && $(gobin) tool cover -func=$@ | sed 's%$(projectPath)/%%' | column -t
+$(buildDir)/output.coverage:$(buildDir)/ .FORCE
+	$(goEnv) $(gobin) test $(testArgs) -covermode=count -coverprofile $@ ./... | tee $(buildDir)/output.$*.test
 $(buildDir)/output.%.coverage.html:$(buildDir)/output.%.coverage
 	$(goEnv) $(gobin) tool cover -html=$< -o $@
+$(buildDir)/output.coverage.html: $(buildDir)/output.coverage .FORCE
+	$(goEnv) $(gobin) tool cover -html=$< -o $@
 #  targets to generate gotest output from the linter.
-$(buildDir)/output.%.lint:$(buildDir)/run-linter $(buildDir)/ .FORCE
-	$(goEnv) ./$< --output=$@ --lintArgs='$(lintArgs)' --packages='$*'
-$(buildDir)/output.lint:$(buildDir)/run-linter $(buildDir)/ .FORCE
-	$(goEnv) ./$< --output="$@" --lintArgs='$(lintArgs)' --packages="$(packages)"
+$(buildDir)/output.%.lint:$(buildDir)/run-linter $(buildDir) .FORCE
+	$(goEnv) ./$< --output=$@ --lintBin=$(buildDir)/golangci-lint --packages='$*'
+$(buildDir)/output.lint:$(buildDir)/run-linter $(buildDir) .FORCE
+	$(goEnv) ./$< --output=$@ --lintBin=$(buildDir)/golangci-lint --packages='$(packages)'
 #  targets to process and generate coverage reports
 # end test and coverage artifacts
 
 
 # userfacing targets for basic build and development operations
 compile:
-	$(goEnv) $(gobin) build ./
-test:$(buildDir)/test.out
-$(buildDir)/test.out:.FORCE
-	@mkdir -p $(buildDir)
-	$(goEnv) $(gobin) test $(testArgs) ./ | tee $@
-	@grep -s -q -e "^PASS" $@
-coverage:$(buildDir)/cover.out
-	$(goEnv) $(gobin) tool cover -func=$< | sed -E 's%github.com/.*/ftdc/%%' | column -t
-coverage-html:$(buildDir)/cover.html
+	$(goEnv) $(gobin) build ./...
+test:$(buildDir)/output.test
+coverage:$(buildDir)/output.coverage
+	$(goEnv) $(gobin) tool cover -func=$< | sed -E 's%github.com/.*/certdepot/%%' | column -t
+coverage-html:$(buildDir)/output.coverage.html
 
 benchmark:
 	$(goEnv) $(gobin) test -v -benchmem -bench=. -run="Benchmark.*" -timeout=20m
 lint:$(foreach target,$(packages),$(buildDir)/output.$(target).lint)
 
-phony += lint lint-deps build build-race race test coverage coverage-html
+phony += lint build race test coverage coverage-html
 .PRECIOUS:$(foreach target,$(packages),$(buildDir)/output.$(target).lint)
 .PRECIOUS:$(buildDir)/output.lint
 # end front-ends
 
 
-$(buildDir):$(srcFiles) compile
+$(buildDir): compile
 	@mkdir -p $@
-$(buildDir)/cover.out:$(buildDir) $(testFiles) .FORCE
-	$(goEnv) $(gobin) test $(testArgs) -covermode=count -coverprofile $@ ./
-$(buildDir)/cover.html:$(buildDir)/cover.out
-	$(goEnv) $(gobin) tool cover -html=$< -o $@
 
 
 vendor-clean:
@@ -136,6 +103,9 @@ vendor-clean:
 	find vendor/ -type d -empty | xargs rm -rf
 	find vendor/ -name "*.gif" -o -name "*.gz" -o -name "*.png" -o -name "*.ico" -o -name "*testdata*" | xargs rm -rf
 phony += vendor-clean
+clean:
+	rm -rf $(lintDeps)
+phony += clean
 
 # mongodb utility targets
 mongodb/.get-mongodb:
