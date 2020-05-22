@@ -3,7 +3,7 @@ package certdepot
 import (
 	"time"
 
-	"github.com/mongodb/anser/bsonutil"
+	"github.com/deciduosity/anser/bsonutil"
 )
 
 // User stores information for a user in the mongo certificate depot.

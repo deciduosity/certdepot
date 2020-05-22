@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mongodb/grip"
+	"github.com/deciduosity/grip"
 )
 
 type result struct {
