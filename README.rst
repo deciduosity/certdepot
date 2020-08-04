@@ -5,14 +5,62 @@
 Overview
 --------
 
-Tools for creating and storing SSL certificates.
+Startup provides a set of tool Tools for creating and storing SSL certificates.
 
+Certdepot is a higher level interface that wraps `certstrap
+<https://github.com/square/certstrap>`_ by Square, and provides additional
+ways of storing certificates and managing certificate workflows.
 
-Motivation
-----------
+Certdepot is available under the terms of the Apache License (v2.)
 
-Certdepot is based off `certstrap <https://github.com/square/certstrap>`_ by
-Square. This project heavily depends certstrap by expanding its capabilities.
+Documentation
+-------------
+
+See the
+`certdepot godoc <https://godoc.org/github.com/deciduosity/certdepot>`_ for
+complete documentation of certdepot.
+
+See the `certstrap godoc <https://godoc.org/github.com/square/certstrap>`_ for
+complete documentation of certstrap.
+
+Development
+-----------
+
+Testing
+~~~~~~~
+
+The certdepot project uses a ``makefile`` to coordinate testing. 
+
+The makefile provides the following targets:
+
+``build``
+   Compiles non-test code.
+
+``test``
+   Runs all tests, sequentially, for all packages.
+
+``test-<package>``
+   Runs all tests for a specific package.
+
+``race``, ``race-<package>``
+   As with their ``test`` counterpart, these targets run tests with
+   the race detector enabled.
+
+``lint``, ``lint-<package>``
+   Installs and runs the ``gometaliter`` with appropriate settings to
+   lint the project.
+
+The tests depend on having a running version of MongoDB.
+
+Future Work
+~~~~~~~~~~~
+
+- Add additional backends, with support for additional databases including an
+  embedded, and a SQL-based approach.
+
+- Integration to support auto-rotation and renewal. 
+
+Please file issues if there are other features you're interested in.'
 
 Features
 --------
@@ -23,7 +71,6 @@ Certificate Creation and Signing
 SSL certificates and certificate authorities (CAs) can easily be created and
 signed using Certdepot.
 
-
 MongoDB Backed Depot
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -33,7 +80,6 @@ MongoDB. This facilitates the storing and fetching of SSL certificates to and
 from a Mongo database. There are various functions for maintaining the depot,
 such as checking for expiration and rotating certs.
 
-
 Bootstrap
 ~~~~~~~~~
 
@@ -41,12 +87,12 @@ Bootsrapping a depot facilitates creating a certificate depot with both a CA
 and service certificate. ``BootstrapDepot`` currently supports bootstrapping
 ``FileDepots`` and ``MongoDepots``.
 
-
-Code Examples
--------------
+Examples
+--------
 
 Create a depot, initialize a CA in the depot, and create and sign service cert
 with that CA in the depot: ::
+
 	mongoOpts := certdepot.MongoDBOptions{} // populate options
 	d, err := certdepot.NewMongoDBCertDepot(ctx, mongoOpts)
 	// handle err
@@ -76,52 +122,10 @@ with that CA in the depot: ::
 
 The following does the same as above, but now using the bootstrap
 functionality: ::
+
 	bootstrapConf := certdepot.BootstrapDepotConfig{
                 MongoDepot:  mongoOpts,
 		CAOpts:      certOpts,
 		ServiceOpts: certOpts,
 	}
 	d, err := BootstrapDepot(ctx, bootstrapConf)
-
-
-
-Development
------------
-
-The certdepot project uses a ``makefile`` to coordinate testing.
-
-The makefile provides the following targets:
-
-``build``
-   Compiles non-test code.
-
-``test``
-   Runs all tests, sequentially, for all packages.
-
-``test-<package>``
-   Runs all tests for a specific package.
-
-``race``, ``race-<package>``
-   As with their ``test`` counterpart, these targets run tests with
-   the race detector enabled.
-
-``lint``, ``lint-<package>``
-   Installs and runs the ``gometaliter`` with appropriate settings to
-   lint the project.
-
-Note that in order for tests to run successfully and local mongod must be
-running.
-
-File tickets in Jira with the `MAKE <https://jira.mongodb.org/browse/MAKE>`_
-project.
-
-
-Documentation
--------------
-
-See the
-`certdepot godoc <https://godoc.org/github.com/evergreen-ci/certdepot>`_ for
-complete documentation of certdepot.
-
-See the `certstrap godoc <https://godoc.org/github.com/square/certstrap>`_ for
-complete documentation of certstrap.
