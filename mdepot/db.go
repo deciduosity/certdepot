@@ -1,10 +1,13 @@
-package certdepot
+package mdepot
 
 import (
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/deciduosity/certdepot"
 	"github.com/pkg/errors"
+	"github.com/square/certstrap/depot"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -14,7 +17,7 @@ import (
 func (m *mongoDepot) PutTTL(name string, expiration time.Time) error {
 	expiration = expiration.UTC()
 
-	minExpiration, maxExpiration, err := ValidityBounds(m, name)
+	minExpiration, maxExpiration, err := certdepot.ValidityBounds(m, name)
 	if err != nil {
 		return errors.Wrap(err, "could not get certificate validity bounds")
 	}
@@ -37,7 +40,7 @@ func (m *mongoDepot) PutTTL(name string, expiration time.Time) error {
 
 func (m *mongoDepot) GetTTL(name string) (time.Time, error) {
 	formattedName := strings.Replace(name, " ", "_", -1)
-	var user User
+	var user certdepot.User
 	if err := m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx,
 		bson.M{userIDKey: formattedName},
 	).Decode(&user); err != nil {
@@ -47,8 +50,8 @@ func (m *mongoDepot) GetTTL(name string) (time.Time, error) {
 }
 
 // FindExpiresBefore finds all Users that expire before the given cutoff time.
-func (m *mongoDepot) FindExpiresBefore(cutoff time.Time) ([]User, error) {
-	users := []User{}
+func (m *mongoDepot) FindExpiresBefore(cutoff time.Time) ([]certdepot.User, error) {
+	users := []certdepot.User{}
 	res, err := m.client.Database(m.databaseName).Collection(m.collectionName).
 		Find(m.ctx, expiresBeforeQuery(cutoff))
 	if err != nil {
@@ -74,4 +77,29 @@ func (m *mongoDepot) DeleteExpiresBefore(cutoff time.Time) error {
 
 func expiresBeforeQuery(cutoff time.Time) bson.M {
 	return bson.M{userTTLKey: bson.M{"$lte": cutoff}}
+}
+
+func getFormattedCertificateRequestName(name string) (string, error) {
+	filenameAcceptable, err := regexp.Compile("[^a-zA-Z0-9._-]")
+	if err != nil {
+		return "", errors.Wrap(err, "error compiling regex")
+	}
+	return string(filenameAcceptable.ReplaceAll([]byte(name), []byte("_"))), nil
+}
+
+func getNameAndKey(tag *depot.Tag) (string, string, error) {
+	if name := depot.GetNameFromCrtTag(tag); name != "" {
+		return strings.Replace(name, " ", "_", -1), userCertKey, nil
+	}
+	if name := depot.GetNameFromPrivKeyTag(tag); name != "" {
+		return strings.Replace(name, " ", "_", -1), userPrivateKeyKey, nil
+	}
+	if name := depot.GetNameFromCsrTag(tag); name != "" {
+		formattedName, err := getFormattedCertificateRequestName(name)
+		return formattedName, userCertReqKey, err
+	}
+	if name := depot.GetNameFromCrlTag(tag); name != "" {
+		return strings.Replace(name, " ", "_", -1), userCertRevocListKey, nil
+	}
+	return "", "", nil
 }

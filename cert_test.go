@@ -856,6 +856,12 @@ func TestSign(t *testing.T) {
 	}
 }
 
+func makeTestDepot(t *testing.T, dir string) Depot {
+	fd, err := depot.NewFileDepot(dir)
+	require.NoError(t, err)
+	return MakeDepot(fd, Options{})
+}
+
 func TestCreateCertificateOnExpiration(t *testing.T) {
 	ctx := context.TODO()
 	tempDir, err := ioutil.TempDir(".", "cert-test")
@@ -867,21 +873,22 @@ func TestCreateCertificateOnExpiration(t *testing.T) {
 	caName := "ca"
 	serviceName := "service"
 	user := "user"
-	d, err := BootstrapDepot(ctx, BootstrapDepotConfig{
-		FileDepot:   tempDir,
-		CAName:      caName,
-		ServiceName: serviceName,
-		CAOpts: &CertificateOptions{
-			CommonName: caName,
-			Expires:    365 * 24 * time.Hour,
-		},
-		ServiceOpts: &CertificateOptions{
-			CA:         caName,
-			CommonName: serviceName,
-			Host:       serviceName,
-			Expires:    24 * time.Hour,
-		},
-	})
+
+	d, err := BootstrapDepot(ctx, makeTestDepot(t, tempDir),
+		BootstrapDepotConfig{
+			CAName:      caName,
+			ServiceName: serviceName,
+			CAOpts: &CertificateOptions{
+				CommonName: caName,
+				Expires:    365 * 24 * time.Hour,
+			},
+			ServiceOpts: &CertificateOptions{
+				CA:         caName,
+				CommonName: serviceName,
+				Host:       serviceName,
+				Expires:    24 * time.Hour,
+			},
+		})
 	require.NoError(t, err)
 
 	// user cert DNE exist

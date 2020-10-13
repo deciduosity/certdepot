@@ -1,10 +1,11 @@
-package certdepot
+package mdepot
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/deciduosity/certdepot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -19,15 +20,15 @@ func TestDB(t *testing.T) {
 		collectionName = "certs"
 		dbTimeout      = 5 * time.Second
 	)
-	for name, testCase := range map[string]func(ctx context.Context, t *testing.T, md *mongoDepot, client *mongo.Client, coll *mongo.Collection){
-		"PutTTL": func(ctx context.Context, t *testing.T, md *mongoDepot, client *mongo.Client, coll *mongo.Collection) {
+	for name, testCase := range map[string]func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager, client *mongo.Client, coll *mongo.Collection){
+		"PutTTL": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager, client *mongo.Client, coll *mongo.Collection) {
 			caName := "ca"
 			serviceName := "localhost"
 
-			for subTestName, subTestCase := range map[string]func(ctx context.Context, t *testing.T, md *mongoDepot){
-				"SetsValueOnExistingDocument": func(ctx context.Context, t *testing.T, md *mongoDepot) {
+			for subTestName, subTestCase := range map[string]func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager){
+				"SetsValueOnExistingDocument": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager) {
 					name := "foo"
-					opts := &CertificateOptions{
+					opts := &certdepot.CertificateOptions{
 						CA:         caName,
 						CommonName: name,
 						Host:       name,
@@ -35,16 +36,16 @@ func TestDB(t *testing.T) {
 					}
 					require.NoError(t, opts.CreateCertificate(md))
 
-					dbUser := &User{}
+					dbUser := &certdepot.User{}
 					require.NoError(t, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(dbUser))
 
 					assert.WithinDuration(t, time.Now().Add(opts.Expires), dbUser.TTL, time.Minute)
 				},
-				"DoesNotInsert": func(ctx context.Context, t *testing.T, md *mongoDepot) {
+				"DoesNotInsert": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager) {
 					name := "user"
 					ttl := time.Now()
 					require.Error(t, md.PutTTL(name, ttl))
-					dbUser := &User{}
+					dbUser := &certdepot.User{}
 					assert.Equal(t, mongo.ErrNoDocuments, coll.FindOne(ctx, bson.M{userIDKey: name}).Decode(dbUser))
 				},
 			} {
@@ -52,40 +53,43 @@ func TestDB(t *testing.T) {
 					tctx, cancel := context.WithTimeout(ctx, dbTimeout)
 					defer cancel()
 
-					conf := BootstrapDepotConfig{
+					conf := certdepot.BootstrapDepotConfig{
 						CAName:      caName,
 						ServiceName: serviceName,
-						CAOpts: &CertificateOptions{
+						CAOpts: &certdepot.CertificateOptions{
 							CommonName: caName,
 							Expires:    24 * time.Hour,
 						},
-						ServiceOpts: &CertificateOptions{
+						ServiceOpts: &certdepot.CertificateOptions{
 							CA:         caName,
 							CommonName: serviceName,
 							Host:       serviceName,
 							Expires:    24 * time.Hour,
 						},
-						MongoDepot: &MongoDBOptions{
+					}
+
+					dpt, err := NewMongoDBCertDepot(
+						tctx,
+						&MongoDBOptions{
 							MongoDBURI:     uri,
 							DatabaseName:   databaseName,
 							CollectionName: collectionName,
 						},
-					}
+					)
 
-					d, err := BootstrapDepot(ctx, conf)
+					d, err := certdepot.BootstrapDepot(ctx, dpt, conf)
 					require.NoError(t, err)
 					defer func() {
 						assert.NoError(t, client.Database(databaseName).Drop(ctx))
 					}()
 
-					md, ok := d.(*mongoDepot)
+					md, ok := d.(certdepot.ExpirationManager)
 					require.True(t, ok)
-
 					subTestCase(tctx, t, md)
 				})
 			}
 		},
-		"GetTTL": func(ctx context.Context, t *testing.T, md *mongoDepot, client *mongo.Client, coll *mongo.Collection) {
+		"GetTTL": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager, client *mongo.Client, coll *mongo.Collection) {
 			for subTestName, subTestCase := range map[string]func(ctx context.Context, t *testing.T){
 				"FailsForNonexistentDocument": func(ctx context.Context, t *testing.T) {
 					_, err := md.GetTTL("nonexistent")
@@ -94,7 +98,7 @@ func TestDB(t *testing.T) {
 				"PassesForExistingDocument": func(ctx context.Context, t *testing.T) {
 					name := "user"
 					expiration := time.Now()
-					user := &User{
+					user := &certdepot.User{
 						ID:            name,
 						Cert:          "cert",
 						PrivateKey:    "key",
@@ -122,18 +126,18 @@ func TestDB(t *testing.T) {
 				})
 			}
 		},
-		"FindExpiresBefore": func(ctx context.Context, t *testing.T, md *mongoDepot, client *mongo.Client, coll *mongo.Collection) {
+		"FindExpiresBefore": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager, client *mongo.Client, coll *mongo.Collection) {
 			for subTestName, subTestCase := range map[string]func(ctx context.Context, t *testing.T){
 				"MatchesExpired": func(ctx context.Context, t *testing.T) {
 					name1 := "user1"
 					name2 := "user2"
 					ttl := time.Now()
 					expiration := ttl.Add(time.Hour)
-					userBeforeExpiration := &User{
+					userBeforeExpiration := &certdepot.User{
 						ID:  name1,
 						TTL: ttl,
 					}
-					userAfterExpiration := &User{
+					userAfterExpiration := &certdepot.User{
 						ID:  name2,
 						TTL: expiration.Add(time.Hour),
 					}
@@ -149,7 +153,7 @@ func TestDB(t *testing.T) {
 				},
 				"IgnoresDocumentsWithoutTTL": func(ctx context.Context, t *testing.T) {
 					name := "user"
-					user := &User{
+					user := &certdepot.User{
 						ID:            name,
 						Cert:          "cert",
 						PrivateKey:    "key",
@@ -174,18 +178,18 @@ func TestDB(t *testing.T) {
 				})
 			}
 		},
-		"DeleteExpiresBefore": func(ctx context.Context, t *testing.T, md *mongoDepot, client *mongo.Client, coll *mongo.Collection) {
+		"DeleteExpiresBefore": func(ctx context.Context, t *testing.T, md certdepot.ExpirationManager, client *mongo.Client, coll *mongo.Collection) {
 			for subTestName, subTestCase := range map[string]func(ctx context.Context, t *testing.T){
 				"MatchesExpired": func(ctx context.Context, t *testing.T) {
 					name1 := "user1"
 					name2 := "user2"
 					ttl := time.Now()
 					expiration := ttl.Add(time.Hour)
-					userBeforeExpiration := &User{
+					userBeforeExpiration := &certdepot.User{
 						ID:  name1,
 						TTL: ttl,
 					}
-					userAfterExpiration := &User{
+					userAfterExpiration := &certdepot.User{
 						ID:  name2,
 						TTL: expiration.Add(time.Hour),
 					}
@@ -195,7 +199,7 @@ func TestDB(t *testing.T) {
 					_, err = coll.InsertOne(ctx, userAfterExpiration)
 					require.NoError(t, err)
 					require.NoError(t, md.DeleteExpiresBefore(expiration))
-					dbUsers := []User{}
+					dbUsers := []certdepot.User{}
 					res, err := coll.Find(ctx, bson.M{})
 					require.NoError(t, err)
 					require.NoError(t, res.All(ctx, &dbUsers))
@@ -204,7 +208,7 @@ func TestDB(t *testing.T) {
 				},
 				"IgnoresDocumentsWithoutTTL": func(ctx context.Context, t *testing.T) {
 					name := "user"
-					user := &User{
+					user := &certdepot.User{
 						ID:            name,
 						Cert:          "cert",
 						PrivateKey:    "key",
@@ -247,10 +251,11 @@ func TestDB(t *testing.T) {
 
 			d, err := NewMongoDBCertDepotWithClient(ctx, client, opts)
 			require.NoError(t, err)
-			md, ok := d.(*mongoDepot)
-			require.True(t, ok)
 
-			testCase(ctx, t, md, client, client.Database(databaseName).Collection(collectionName))
+			mdbepot, ok := d.(certdepot.ExpirationManager)
+			require.True(t, ok, "%T", d)
+
+			testCase(ctx, t, mdbepot, client, client.Database(databaseName).Collection(collectionName))
 		})
 	}
 }

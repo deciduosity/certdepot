@@ -1,0 +1,59 @@
+package mdepot
+
+import (
+	"time"
+
+	"github.com/deciduosity/anser/bsonutil"
+	"github.com/deciduosity/certdepot"
+)
+
+var (
+	userIDKey            = bsonutil.MustHaveTag(certdepot.User{}, "ID")
+	userCertKey          = bsonutil.MustHaveTag(certdepot.User{}, "Cert")
+	userPrivateKeyKey    = bsonutil.MustHaveTag(certdepot.User{}, "PrivateKey")
+	userCertReqKey       = bsonutil.MustHaveTag(certdepot.User{}, "CertReq")
+	userCertRevocListKey = bsonutil.MustHaveTag(certdepot.User{}, "CertRevocList")
+	userTTLKey           = bsonutil.MustHaveTag(certdepot.User{}, "TTL")
+)
+
+// MongoDBOptions contains options for NewMongoDBCertDepot,
+// NewMongoDBCertDepotWithClient, NewMgoCertDepot, and
+// NewMgoCertDepotWithSession.
+type MongoDBOptions struct {
+	MongoDBURI           string            `bson:"mongodb_uri" json:"mongodb_uri" yaml:"mongodb_uri"`
+	DatabaseName         string            `bson:"db_name" json:"db_name" yaml:"db_name"`
+	CollectionName       string            `bson:"coll_name" json:"coll_name" yaml:"coll_name"`
+	MongoDBDialTimeout   time.Duration     `bson:"dial_timeout,omitempty" json:"dial_timeout,omitempty" yaml:"dial_timeout,omitempty"`
+	MongoDBSocketTimeout time.Duration     `bson:"socket_timeout,omitempty" json:"socket_timeout,omitempty" yaml:"socket_timeout,omitempty"`
+	DepotOptions         certdepot.Options `bson:"depot_options" json:"depot_options" yaml:"depot_options"`
+}
+
+// IsZero returns whether the given MongoDBOptions struct holds the "zero"
+// value of the struct.
+func (opts *MongoDBOptions) IsZero() bool {
+	if opts.DatabaseName == "" && opts.CollectionName == "" {
+		return true
+	}
+
+	return false
+}
+
+func (opts *MongoDBOptions) validate() error {
+	if opts.MongoDBURI == "" {
+		opts.MongoDBURI = "mongodb://localhost:27017"
+	}
+	if opts.MongoDBDialTimeout <= 0 {
+		opts.MongoDBDialTimeout = 2 * time.Second
+	}
+	if opts.MongoDBSocketTimeout <= 0 {
+		opts.MongoDBSocketTimeout = time.Minute
+	}
+	if opts.DatabaseName == "" {
+		opts.DatabaseName = "certDepot"
+	}
+	if opts.CollectionName == "" {
+		opts.CollectionName = "certs"
+	}
+
+	return nil
+}

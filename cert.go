@@ -66,7 +66,7 @@ type CertificateOptions struct {
 }
 
 // Init initializes a new CA.
-func (opts *CertificateOptions) Init(wd depot.Depot) error {
+func (opts *CertificateOptions) Init(wd Depot) error {
 	if opts.CommonName == "" {
 		return errors.New("must provide common name of CA")
 	}
@@ -119,15 +119,16 @@ func (opts *CertificateOptions) Init(wd depot.Depot) error {
 		return errors.Wrap(err, "problem saving certificate revocation list")
 	}
 
-	if md, ok := wd.(*mongoDepot); ok {
+	if emd, ok := wd.(ExpirationManager); ok {
 		rawCrt, err := crt.GetRawCertificate()
 		if err != nil {
 			return errors.Wrap(err, "problem getting raw cert")
 		}
-		if err = md.PutTTL(formattedName, rawCrt.NotAfter); err != nil {
+		if err = emd.PutTTL(formattedName, rawCrt.NotAfter); err != nil {
 			return errors.Wrap(err, "problem setting certificate TTL")
 		}
 	}
+
 	return nil
 }
 
@@ -340,12 +341,12 @@ func (opts *CertificateOptions) PutCertFromMemory(wd depot.Depot) error {
 		return errors.Wrap(err, "problem saving certificate")
 	}
 
-	if md, ok := wd.(*mongoDepot); ok {
+	if emd, ok := wd.(ExpirationManager); ok {
 		rawCrt, err := opts.crt.GetRawCertificate()
 		if err != nil {
 			return errors.Wrap(err, "problem getting raw certificate")
 		}
-		if err = md.PutTTL(formattedReqName, rawCrt.NotAfter); err != nil {
+		if err = emd.PutTTL(formattedReqName, rawCrt.NotAfter); err != nil {
 			return errors.Wrap(err, "problem saving certificate TTL")
 		}
 	}
@@ -402,23 +403,6 @@ func (opts CertificateOptions) getOrCreatePrivateKey() (*pkix.Key, error) {
 		}
 	}
 	return key, nil
-}
-
-func getNameAndKey(tag *depot.Tag) (string, string, error) {
-	if name := depot.GetNameFromCrtTag(tag); name != "" {
-		return strings.Replace(name, " ", "_", -1), userCertKey, nil
-	}
-	if name := depot.GetNameFromPrivKeyTag(tag); name != "" {
-		return strings.Replace(name, " ", "_", -1), userPrivateKeyKey, nil
-	}
-	if name := depot.GetNameFromCsrTag(tag); name != "" {
-		formattedName, err := getFormattedCertificateRequestName(name)
-		return formattedName, userCertReqKey, err
-	}
-	if name := depot.GetNameFromCrlTag(tag); name != "" {
-		return strings.Replace(name, " ", "_", -1), userCertRevocListKey, nil
-	}
-	return "", "", nil
 }
 
 // CreateCertificate is a convenience function for creating a certificate

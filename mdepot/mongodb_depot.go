@@ -1,8 +1,10 @@
-package certdepot
+package mdepot
 
 import (
 	"context"
+	"time"
 
+	"github.com/deciduosity/certdepot"
 	"github.com/deciduosity/grip"
 	"github.com/deciduosity/grip/message"
 	"github.com/pkg/errors"
@@ -17,12 +19,12 @@ type mongoDepot struct {
 	client         *mongo.Client
 	databaseName   string
 	collectionName string
-	opts           DepotOptions
+	opts           certdepot.Options
 }
 
 // NewMongoDBCertDepot returns a new cert depot backed by MongoDB using the
 // mongo driver.
-func NewMongoDBCertDepot(ctx context.Context, opts *MongoDBOptions) (Depot, error) {
+func NewMongoDBCertDepot(ctx context.Context, opts *MongoDBOptions) (certdepot.Depot, error) {
 	if err := opts.validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid options")
 	}
@@ -32,18 +34,12 @@ func NewMongoDBCertDepot(ctx context.Context, opts *MongoDBOptions) (Depot, erro
 		return nil, errors.Wrap(err, "problem connecting to database")
 	}
 
-	return &mongoDepot{
-		ctx:            ctx,
-		client:         client,
-		databaseName:   opts.DatabaseName,
-		collectionName: opts.CollectionName,
-		opts:           opts.DepotOptions,
-	}, nil
+	return NewMongoDBCertDepotWithClient(ctx, client, opts)
 }
 
 // NewMongoDBCertDepotWithClient returns a new cert depot backed by MongoDB
 // using the provided mongo driver client.
-func NewMongoDBCertDepotWithClient(ctx context.Context, client *mongo.Client, opts *MongoDBOptions) (Depot, error) {
+func NewMongoDBCertDepotWithClient(ctx context.Context, client *mongo.Client, opts *MongoDBOptions) (certdepot.Depot, error) {
 	if client == nil {
 		return nil, errors.New("must specify a non-nil client")
 	}
@@ -52,13 +48,13 @@ func NewMongoDBCertDepotWithClient(ctx context.Context, client *mongo.Client, op
 		return nil, errors.Wrap(err, "invalid options")
 	}
 
-	return &mongoDepot{
+	return certdepot.MakeDepot(&mongoDepot{
 		ctx:            ctx,
 		client:         client,
 		databaseName:   opts.DatabaseName,
 		collectionName: opts.CollectionName,
 		opts:           opts.DepotOptions,
-	}, nil
+	}, opts.DepotOptions), nil
 }
 
 // Put inserts the data into the document specified by the tag.
@@ -100,7 +96,7 @@ func (m *mongoDepot) Check(tag *depot.Tag) bool {
 		return false
 	}
 
-	u := &User{}
+	u := &certdepot.User{}
 
 	err = m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{Key: userIDKey, Value: name}}).Decode(u)
 	grip.WarningWhen(errNotNoDocuments(err), message.WrapError(err, message.Fields{
@@ -132,7 +128,7 @@ func (m *mongoDepot) Get(tag *depot.Tag) ([]byte, error) {
 		return nil, errors.Wrapf(err, "could not format name %s", name)
 	}
 
-	u := &User{}
+	u := &certdepot.User{}
 	if err = m.client.Database(m.databaseName).Collection(m.collectionName).FindOne(m.ctx, bson.D{{Key: userIDKey, Value: name}}).Decode(u); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.Wrapf(err, "could not find %s in the database", name)
@@ -173,12 +169,21 @@ func (m *mongoDepot) Delete(tag *depot.Tag) error {
 
 	return nil
 }
-func (m *mongoDepot) Save(name string, creds *Credentials) error { return depotSave(m, name, creds) }
-func (m *mongoDepot) Find(name string) (*Credentials, error)     { return depotFind(m, name, m.opts) }
-func (m *mongoDepot) Generate(name string) (*Credentials, error) {
-	return depotGenerate(m, name, m.opts)
-}
 
 func errNotNoDocuments(err error) bool {
-	return err != nil && err != mongo.ErrNoDocuments
+	if errors.Cause(err) != mongo.ErrNoDocuments {
+		return true
+
+	}
+
+	return false
+}
+
+// PutTTL puts a new TTL for a given name in the mongo depot.
+func putTTL(d depot.Depot, name string, expiration time.Time) error {
+	md, ok := d.(*mongoDepot)
+	if !ok {
+		return errors.New("cannot put TTL if depot is not a mongo depot")
+	}
+	return md.PutTTL(name, expiration)
 }

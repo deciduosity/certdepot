@@ -1,6 +1,6 @@
 buildDir := build
 name := certdepot
-packages := certdepot
+packages := certdepot fdepot mdepot
 projectPath := github.com/evergreen-ci/certdepot
 #
 # override the go binary path if set
