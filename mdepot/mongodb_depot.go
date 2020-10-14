@@ -173,7 +173,6 @@ func (m *mongoDepot) Delete(tag *depot.Tag) error {
 func errNotNoDocuments(err error) bool {
 	if errors.Cause(err) != mongo.ErrNoDocuments {
 		return true
-
 	}
 
 	return false
