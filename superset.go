@@ -1,11 +1,51 @@
 package certdepot
 
 import (
+	"time"
+
 	"github.com/deciduosity/grip"
 	"github.com/pkg/errors"
 	"github.com/square/certstrap/depot"
 	"github.com/square/certstrap/pkix"
 )
+
+type depotImpl struct {
+	depot.Depot
+	opts Options
+}
+
+// MakeDepot wraps a depot.Depot implementation (or an expiration
+// manager, as needed,) in a certdepot.Depot implementation, as the
+// extensions to the local interface can be implemented in terms of
+// the external interface.
+func MakeDepot(d depot.Depot, opts Options) Depot {
+	out := &depotImpl{Depot: d, opts: opts}
+	if em, ok := d.(ExpirationManager); ok {
+		return &expMgr{
+			depotImpl: out,
+			em:        em,
+		}
+	}
+
+	return out
+}
+
+type expMgr struct {
+	*depotImpl
+	em ExpirationManager
+}
+
+func (em *expMgr) PutTTL(name string, exp time.Time) error { return em.em.PutTTL(name, exp) }
+
+func (em *expMgr) GetTTL(name string) (time.Time, error) { return em.em.GetTTL(name) }
+
+func (em *expMgr) FindExpiresBefore(cutoff time.Time) ([]User, error) {
+	return em.em.FindExpiresBefore(cutoff)
+}
+
+func (em *expMgr) DeleteExpiresBefore(cutoff time.Time) error {
+	return em.em.DeleteExpiresBefore(cutoff)
+}
 
 func deleteIfExists(dpt depot.Depot, tags ...*depot.Tag) error {
 	catcher := grip.NewBasicCatcher()
@@ -17,7 +57,7 @@ func deleteIfExists(dpt depot.Depot, tags ...*depot.Tag) error {
 	return catcher.Resolve()
 }
 
-func depotSave(dpt depot.Depot, name string, creds *Credentials) error {
+func (dpt *depotImpl) Save(name string, creds *Credentials) error {
 	if err := deleteIfExists(dpt, CsrTag(name), PrivKeyTag(name), CrtTag(name)); err != nil {
 		return errors.Wrap(err, "problem deleting existing credentials")
 	}
@@ -34,26 +74,30 @@ func depotSave(dpt depot.Depot, name string, creds *Credentials) error {
 	if err != nil {
 		return errors.Wrap(err, "could not get certificate from PEM bytes")
 	}
-	rawCrt, err := crt.GetRawCertificate()
-	if err != nil {
-		return errors.Wrap(err, "could not get x509 certificate")
-	}
-	if err := putTTL(dpt, name, rawCrt.NotAfter); err != nil {
-		return errors.Wrap(err, "could not put expiration on credentials")
+
+	if emd, ok := dpt.Depot.(ExpirationManager); ok {
+		rawCrt, err := crt.GetRawCertificate()
+		if err != nil {
+			return errors.Wrap(err, "could not get x509 certificate")
+		}
+
+		if err := emd.PutTTL(name, rawCrt.NotAfter); err != nil {
+			return errors.Wrap(err, "could not put expiration on credentials")
+		}
 	}
 
 	return nil
 }
 
-func depotGenerate(dpt Depot, name string, do DepotOptions) (*Credentials, error) {
+func (dpt *depotImpl) Generate(name string) (*Credentials, error) {
 	opts := CertificateOptions{
-		CA:         do.CA,
+		CA:         dpt.opts.CA,
 		CommonName: name,
 		Host:       name,
-		Expires:    do.DefaultExpiration,
+		Expires:    dpt.opts.DefaultExpiration,
 	}
 
-	pemCACrt, err := dpt.Get(CrtTag(do.CA))
+	pemCACrt, err := dpt.Get(CrtTag(dpt.opts.CA))
 	if err != nil {
 		return nil, errors.Wrap(err, "problem getting CA certificate")
 	}
@@ -87,8 +131,8 @@ func depotGenerate(dpt Depot, name string, do DepotOptions) (*Credentials, error
 	return creds, nil
 }
 
-func depotFind(dpt depot.Depot, name string, do DepotOptions) (*Credentials, error) {
-	caCrt, err := dpt.Get(CrtTag(do.CA))
+func (dpt *depotImpl) Find(name string) (*Credentials, error) {
+	caCrt, err := dpt.Get(CrtTag(dpt.opts.CA))
 	if err != nil {
 		return nil, errors.Wrap(err, "problem getting CA certificate")
 	}
