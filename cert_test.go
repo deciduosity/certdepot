@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deciduosity/grip"
+	"github.com/cdr/grip"
 	"github.com/square/certstrap/depot"
 	"github.com/square/certstrap/pkix"
 	"github.com/stretchr/testify/assert"
