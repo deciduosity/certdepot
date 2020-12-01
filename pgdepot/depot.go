@@ -10,7 +10,7 @@ import (
 )
 
 type pgDepot struct {
-	db   sqlx.DB
+	db   *sqlx.DB
 	opts Options
 }
 
